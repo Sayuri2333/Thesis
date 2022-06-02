@@ -1,0 +1,97 @@
+# import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_eager_execution()
+tf.disable_v2_behavior()
+from tensorflow.compat.v1.keras.layers import MaxPooling3D, Conv3D, GlobalAveragePooling2D, concatenate, Add, Multiply, Permute, Softmax, AveragePooling2D, MaxPooling2D, Convolution2D, LeakyReLU, add, Reshape, Lambda, Conv2D, LSTMCell, LSTM, Dense, RepeatVector, TimeDistributed, Input, BatchNormalization, multiply, Concatenate, Flatten, Activation, dot, Dot, Dropout
+from utils import SinusoidalPositionEmbedding, TransformerBlock, VisionTransformerBlock, CreatePatches, Add_Embedding_Layer, TemporalEmbedding, ConvTransformerBlock, multiFocusConvAttention, MultiscaleTransformerBlock, DownSampleTransformerBlock, SpatialEmbedding, SpaceTimeLocalTransformerBlock
+
+
+initializer = tf.keras.initializers.Orthogonal(gain=1.0)
+
+def DQN():
+    input_state = Input(shape=(8,80,80,1))
+    conv1 = TimeDistributed(Conv2D(16, 8, (4,4), activation='relu', padding='same', kernel_initializer=initializer))(input_state)
+    conv2 = TimeDistributed(Conv2D(32, 4, (2,2), activation='relu', padding='same', kernel_initializer=initializer))(conv1)
+    flat = Flatten()(conv2)
+    # dense1 = Dense(256)(flat)
+    return input_state, flat
+
+def DRQN():
+    input_state = Input(shape=(8,80,80,1))
+    conv1 = TimeDistributed(Conv2D(32, 8, (4,4), activation='relu', padding='same', kernel_initializer=initializer))(input_state)
+    conv2 = TimeDistributed(Conv2D(64, 4, (2,2), activation='relu', padding='same', kernel_initializer=initializer))(conv1)
+    conv3 = TimeDistributed(Conv2D(64, 3, (1,1), activation='relu', padding='same', kernel_initializer=initializer))(conv2)
+    flat = TimeDistributed(Flatten())(conv3)
+    LSTMUnit = LSTM(512, activation='relu')(flat)
+    return input_state, LSTMUnit
+
+def Conv_Transformer():
+    input_state = Input(shape=(8,80,80,1))
+    conv1 = TimeDistributed(Conv2D(32, 8, (4,4), activation='relu', padding='same', kernel_initializer=initializer))(input_state)
+    conv2 = TimeDistributed(Conv2D(64, 4, (2,2), activation='relu', padding='same', kernel_initializer=initializer))(conv1)
+    conv3 = TimeDistributed(Conv2D(128, 3, (2,2), activation='relu', padding='same', kernel_initializer=initializer))(conv2)
+    GAP = TimeDistributed(GlobalAveragePooling2D())(conv3)
+    with_pos = SinusoidalPositionEmbedding(128)(GAP)
+    trans = TransformerBlock(num_heads=4, mlp_dim=512)(with_pos)
+    trans2 = TransformerBlock(num_heads=4, mlp_dim=512)(trans)
+    last_frame = Lambda(lambda x: x[:, -1, :])(trans2)
+    # dense1 = Dense(512)(last_frame)
+    return input_state, last_frame
+
+def ConvTransformer():
+    input_state = Input(shape=(8,80,80,1))
+    conv1 = TimeDistributed(Conv2D(32, 8, (4,4), activation='relu', padding='same', kernel_initializer=initializer))(input_state)
+    conv2 = TimeDistributed(Conv2D(64, 4, (2,2), activation='relu', padding='same', kernel_initializer=initializer))(conv1)
+    with_pos = TemporalEmbedding(output_dim=64)(conv2)
+    convtrans = ConvTransformerBlock(num_heads=4)(with_pos)
+    convtrans2 = ConvTransformerBlock(num_heads=4)(convtrans)
+    last_frame = Lambda(lambda x : x[:,-1,:,:,:])(convtrans2)
+    conv3 = Conv2D(128, 3, (2,2), activation='relu', padding='same')(last_frame)
+    GAP = GlobalAveragePooling2D()(conv3)
+    # dense1 = Dense(512)(GAP)
+    return input_state, GAP
+
+def ViTrans():
+    input_state = Input(shape=(8, 80, 80, 1))
+    conv1 = TimeDistributed(Conv2D(32, 8, (4,4), activation='relu', padding='same', kernel_initializer=initializer))(input_state)
+    patches = CreatePatches(4)(conv1)
+    flat = TimeDistributed(TimeDistributed(Flatten()))(patches)
+    emb = TimeDistributed(TimeDistributed(Dense(128, use_bias=False)))(flat)
+    with_token = TimeDistributed(Add_Embedding_Layer(num_patches=25, d_model=128))(emb)
+    vit1 = TimeDistributed(VisionTransformerBlock(num_heads=4, mlp_dim=512))(with_token)
+    vit2 = TimeDistributed(VisionTransformerBlock(num_heads=4, mlp_dim=512))(vit1)
+    total_feature = Lambda(lambda x: x[:, :, 0, :])(vit2)
+    with_pos = SinusoidalPositionEmbedding(output_dim=128)(total_feature)
+    trans1 = TransformerBlock(num_heads=4, mlp_dim=512)(with_pos)
+    trans2 = TransformerBlock(num_heads=4, mlp_dim=512)(trans1)
+    last_frame = Lambda(lambda x: x[:, -1, :])(trans2)
+    # dense1 = Dense(512)(last_frame)
+    return input_state, last_frame
+
+def MFCA():
+    input_state = Input(shape=(8,80,80,1))
+    conv1 = TimeDistributed(Conv2D(32, 8, (4,4), activation='relu', padding='same', kernel_initializer=initializer))(input_state)
+    conv2 = TimeDistributed(Conv2D(32, 4, (2,2), activation='relu', padding='same', kernel_initializer=initializer))(conv1)
+    with_pos_large = TemporalEmbedding(output_dim=32)(conv1)
+    with_pos_small = TemporalEmbedding(output_dim=32)(conv2)
+    att_large = multiFocusConvAttention(num_heads=2, selector=2)(with_pos_large)
+    att_small = multiFocusConvAttention(num_heads=2, selector=2)(with_pos_small)
+    att = MaxPooling2D(2)(att_large)
+    all_att = Concatenate(axis=-1)([att, att_small])
+    GAP = GlobalAveragePooling2D()(all_att)
+    # dense1 = Dense(512)(GAP)
+    return input_state, GAP
+
+def MultiscaleTransformer():
+    input_state = Input(shape=(8, 80, 80, 1))
+    encoded = Conv3D(64, kernel_size=[2, 7, 7], strides=[2, 4, 4], padding='same', kernel_initializer=initializer)(input_state)
+    with_temp = TemporalEmbedding(output_dim=64)(encoded)
+    with_ST = SpatialEmbedding(output_dim=64)(with_temp)
+    _att1 = DownSampleTransformerBlock(num_heads=4, mlp_dim=256)(with_ST)
+    _att2 = SpaceTimeLocalTransformerBlock(num_heads=4, kernel_size=[2, 4, 4], mlp_dim=256)(_att1)
+    _att3 = MultiscaleTransformerBlock(num_heads=4, mlp_dim=256, is_pooling=True)(_att2)
+    _att4 = MultiscaleTransformerBlock(num_heads=4, mlp_dim=256, is_pooling=False)(_att3)
+    last_frame = Lambda(lambda x: x[:, -1, :, :, :])(_att4)
+    GAP = GlobalAveragePooling2D()(last_frame)
+    # dense1 = Dense(512)(GAP)
+    return input_state, GAP
