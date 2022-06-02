@@ -18,7 +18,6 @@ from utils import NoisyDense
 import gym
 import os
 from PER import Memory
-os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
 
 import wandb
 from wandb.keras import WandbCallback
@@ -240,8 +239,8 @@ class DARQN:
     def init_sess(self):
         # 初始化
         config = tf.ConfigProto()
-        jit_level = tf.OptimizerOptions.ON_1
-        config.graph_options.optimizer_options.global_jit_level = jit_level
+        # jit_level = tf.OptimizerOptions.ON_1
+        # config.graph_options.optimizer_options.global_jit_level = jit_level
         config.gpu_options.per_process_gpu_memory_fraction =0.5
         config.gpu_options.allow_growth = True
 
