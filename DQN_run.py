@@ -247,7 +247,8 @@ class DARQN:
         sess = tf.InteractiveSession(config=config)
         tf.keras.backend.set_session(sess)
         # 新建用于存储数据的文件夹
-        os.makedirs(self.load_path)
+        if not os.path.exists(self.load_path):
+            os.makedirs(self.load_path)
 
         init = tf.global_variables_initializer()
         sess.run(init)  # 初始化变量

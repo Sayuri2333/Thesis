@@ -339,6 +339,8 @@ class Agent:
         return obs, action, pred, reward
 
     def run(self):
+        if not os.path.exists(self.path):
+            os.makedirs(self.path)
         while self.episode < EPISODES:
             # 跑n个episode，记录需要的信息
             obs, action, pred, reward = self.get_batch()
@@ -357,6 +359,7 @@ class Agent:
             self.gradient_steps += 1
         self.reset_env()
         episode_reward = []
+        self.actor.save(self.path + '/model.h5')
         while self.episode < EPISODES + TEST_EPISODE:
             action, _, _ = self.get_action()
             observation, reward, done, _ = self.env.step(action)
@@ -364,7 +367,7 @@ class Agent:
             self.skip_and_stack_frame(resize_input(observation))
             if done:
                 #wandb
-                print('Test Episode ' + str(self.episode - EPISODES) + ' reward: ' + sum(self.reward))
+                print('Test Episode ' + str(self.episode - EPISODES) + ' reward: ' + str(sum(self.reward)))
                 episode_reward.append(sum(self.reward))
                 self.reward = []
                 self.episode += 1
