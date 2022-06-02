@@ -201,6 +201,7 @@ class DARQN:
             # 执行动作获得状态并stack
             next_state, reward, terminal, _ = game.step(action)
             # reward scaling
+            self.score += reward
             if reward > 0: reward = 1
             elif reward < 0: reward = -1
             next_state = resize_input(next_state)
@@ -222,7 +223,6 @@ class DARQN:
 
             # 更新状态奖励以及步数
             stacked_state = stacked_next_state
-            self.score += reward
             self.step += 1
 
             # 如果到了终止状态 那就将stacked_state恢复到初始状态 并输出图像
