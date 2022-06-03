@@ -1035,6 +1035,18 @@ class NoisyDense(tf.keras.layers.Layer):
         self.activation = tf.keras.activations.get(activation)
         self.sigma_0 = 0.5
 
+    def get_config(self):
+        config = super().get_config()
+        config.update(
+            {
+                "units": self.units,
+                "trainable": self.trainable,
+                "activation": self.activation,
+                "sigma_0": self.sigma_0
+            }
+        )
+        return config
+
     def build(self, input_shape):
 
         p = float(input_shape[-1])
