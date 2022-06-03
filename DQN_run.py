@@ -197,9 +197,11 @@ class DARQN:
             self.progress = self.get_progress()  # 判断程序在什么阶段
 
             action = self.select_action(stacked_state)  # 根据最近 frames选择动作
-
+            print('action is: ' + str(action))
             # 执行动作获得状态并stack
             next_state, reward, terminal, _ = game.step(action)
+            print('sum of next state: ' + str(np.sum(next_state)))
+            print("reward is: " + str(reward))
             # reward scaling
             self.score += reward
             if reward > 0: reward = 1
@@ -224,7 +226,7 @@ class DARQN:
             # 更新状态奖励以及步数
             stacked_state = stacked_next_state
             self.step += 1
-            print(self.step)
+            print('step is: ' + str(self.step))
 
             # 如果到了终止状态 那就将stacked_state恢复到初始状态 并输出图像
             if terminal:
