@@ -224,6 +224,7 @@ class DARQN:
             # 更新状态奖励以及步数
             stacked_state = stacked_next_state
             self.step += 1
+            print(self.step)
 
             # 如果到了终止状态 那就将stacked_state恢复到初始状态 并输出图像
             if terminal:
