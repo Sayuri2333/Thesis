@@ -14,6 +14,7 @@ from tensorflow.compat.v1.keras.layers import concatenate, Add, Multiply, Permut
 from tensorflow.compat.v1.keras.utils import to_categorical
 from tensorflow.compat.v1.keras import losses
 from model import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFCA, MultiscaleTransformer
+from utils import SinusoidalPositionEmbedding, TransformerBlock, VisionTransformerBlock, CreatePatches, Add_Embedding_Layer, TemporalEmbedding, ConvTransformerBlock, multiFocusConvAttention, MultiscaleTransformerBlock, DownSampleTransformerBlock, SpatialEmbedding, SpaceTimeLocalTransformerBlock
 from utils import NoisyDense
 import gym
 import os
@@ -260,7 +261,21 @@ class DARQN:
 
         if check_save == '1':
             # Restore variables from disk.
-            self.model = load_model(self.load_path+'/model.h5')
+            custom_objects = {
+                'SinusoidalPositionEmbedding': SinusoidalPositionEmbedding,
+                'TransformerBlock': TransformerBlock,
+                'VisionTransformerBlock': VisionTransformerBlock,
+                'CreatePatches': CreatePatches,
+                'Add_Embedding_Layer': Add_Embedding_Layer,
+                'TemporalEmbedding': TemporalEmbedding,
+                'ConvTransformerBlock': ConvTransformerBlock,
+                'multiFocusConvAttention': multiFocusConvAttention,
+                'MultiscaleTransformerBlock': MultiscaleTransformerBlock,
+                'DownSampleTransformerBlock': DownSampleTransformerBlock,
+                'SpatialEmbedding': SpatialEmbedding,
+                'SpaceTimeLocalTransformerBlock': SpaceTimeLocalTransformerBlock
+            }
+            self.model = load_model(self.load_path+'/model.h5', custom_objects=custom_objects)
             print("Model restored.")
             check_train = input('Testing or Training? (1=Testing / 2=Training): ')
             if check_train == '1':  # 如果只需要推理
