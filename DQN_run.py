@@ -383,12 +383,21 @@ class DARQN:
 
         elif self.progress == 'Testing':
             # 测试阶段直接选择最优动作
-            Q_value = self.output.eval(feed_dict={self.input_state: [stacked_state]})
-            action_index = np.argmax(Q_value)
-            action = action_index
-            self.maxQ = np.max(Q_value)
+            if random.random() < self.final_epsilon:
+                # 随机选
+                action_index = random.randint(0, self.Num_action - 1)
+                action = action_index
+            else:
+                # 最优选
+                Q_value = self.output.eval(feed_dict={self.input_state: [stacked_state]})
+                action_index = np.argmax(Q_value)
+                action = action_index
+                self.maxQ = np.max(Q_value)
+                wandb.log({'maxQ': self.maxQ}, step=self.step)
+                self.Qdiff = np.max(Q_value) - np.min(Q_value)
+                wandb.log({'Qdiff': self.Qdiff}, step=self.step)
 
-            self.epsilon = 0
+            # self.epsilon = 0
         return action
     
     def experience_replay(self, state, action, reward, next_state, terminal):
