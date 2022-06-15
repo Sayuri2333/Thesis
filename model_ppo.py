@@ -4,7 +4,7 @@ tf.disable_eager_execution()
 tf.disable_v2_behavior()
 from tensorflow.compat.v1.keras.models import Model
 from tensorflow.compat.v1.keras.layers import MaxPooling3D, Conv3D, GlobalAveragePooling2D, concatenate, Add, Multiply, Permute, Softmax, AveragePooling2D, MaxPooling2D, Convolution2D, LeakyReLU, add, Reshape, Lambda, Conv2D, LSTMCell, LSTM, Dense, RepeatVector, TimeDistributed, Input, BatchNormalization, multiply, Concatenate, Flatten, Activation, dot, Dot, Dropout
-from utils import SinusoidalPositionEmbedding, TransformerBlock, VisionTransformerBlock, CreatePatches, Add_Embedding_Layer, TemporalEmbedding, ConvTransformerBlock, multiFocusConvAttention, MultiscaleTransformerBlock, DownSampleTransformerBlock, SpatialEmbedding, SpaceTimeLocalTransformerBlock
+from utils import LocalSpaceTransformerBlock, SinusoidalPositionEmbedding, TransformerBlock, VisionTransformerBlock, CreatePatches, Add_Embedding_Layer, TemporalEmbedding, ConvTransformerBlock, multiFocusConvAttention, MultiscaleTransformerBlock, DownSampleTransformerBlock, SpatialEmbedding, SpaceTimeLocalTransformerBlock
 
 
 initializer = tf.keras.initializers.Orthogonal(gain=1.0)
@@ -90,7 +90,7 @@ def MultiscaleTransformer():
     with_temp = TemporalEmbedding(output_dim=64)(encoded)
     with_ST = SpatialEmbedding(output_dim=64)(with_temp)
     _att1 = DownSampleTransformerBlock(num_heads=4, mlp_dim=256)(with_ST)
-    _att2 = SpaceTimeLocalTransformerBlock(num_heads=4, kernel_size=[2, 4, 4], mlp_dim=256)(_att1)
+    _att2 = TimeDistributed(LocalSpaceTransformerBlock(num_heads=4, kernel_size=5, mlp_dim=256))(_att1)
     _att3 = MultiscaleTransformerBlock(num_heads=4, mlp_dim=256, is_pooling=True)(_att2)
     _att4 = MultiscaleTransformerBlock(num_heads=4, mlp_dim=256, is_pooling=False)(_att3)
     last_frame = Lambda(lambda x: x[:, -1, :, :, :])(_att4)
