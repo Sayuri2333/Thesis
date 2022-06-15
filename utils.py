@@ -456,7 +456,7 @@ class CreatePatches(tf.keras.layers.Layer):
 
     def call(self, inputs):
         patches = []
-        # For square images only ( as inputs.shape[ 1 ] = inputs.shape[ 2 ] )
+        # For square images only ( as inputs.shape[ 2 ] = inputs.shape[ 3 ] )
         input_image_size_i = inputs.shape[2]
         input_image_size_j = inputs.shape[3]
         for i in range(0, input_image_size_i, self.patch_size):
@@ -465,6 +465,53 @@ class CreatePatches(tf.keras.layers.Layer):
                 a = K.expand_dims(a, axis=2)
                 patches.append(a)
         patches = K.concatenate(patches, axis=2)
+        return patches
+
+class RebuildFeature_Timedist(tf.keras.layers.Layer):
+    def __init__(self, num_patch, **kwargs):
+        super(RebuildFeature_Timedist, self).__init__(**kwargs)
+        self.num_patch = num_patch
+    
+    def get_config(self):  # override get_config
+        config = {"num_patch": self.num_patch}
+        base_config = super(RebuildFeature_Timedist, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+    
+    def call(self, inputs):
+        # input = [batch, num_patch**2, height, width, channel]
+        patches = []
+        for i in range(self.num_patch):
+            rows = []
+            for j in range(self.num_patch):
+                rows.append(inputs[:, i*self.num_patch+j, :, :, :])
+            rows = K.concatenate(rows, axis=2)
+            patches.append(rows)
+        return K.concatenate(patches, axis=1)
+
+
+
+class CreatePatches_Timedist(tf.keras.layers.Layer):
+    
+    def __init__(self, patch_size, **kwargs):
+        super(CreatePatches_Timedist, self).__init__(**kwargs)
+        self.patch_size = patch_size
+    
+    def get_config(self):  # override get_config
+        config = {"patch_size": self.patch_size}
+        base_config = super(CreatePatches_Timedist, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+    def call(self, inputs):
+        patches = []
+        # For square images only ( as inputs.shape[ 1 ] = inputs.shape[ 2 ] )
+        input_image_size_i = inputs.shape[1]
+        input_image_size_j = inputs.shape[2]
+        for i in range(0, input_image_size_i, self.patch_size):
+            for j in range(0, input_image_size_j, self.patch_size):
+                a = inputs[:, i:i + self.patch_size, j:j + self.patch_size, :]
+                a = K.expand_dims(a, axis=1)
+                patches.append(a)
+        patches = K.concatenate(patches, axis=1)
         return patches
 
 class Add_Embedding_Layer(tf.keras.layers.Layer):
@@ -974,6 +1021,51 @@ class SpaceTimeLocalTransformerBlock(tf.keras.layers.Layer):
     @classmethod
     def from_config(cls, config):
         return cls(**config)
+
+
+@tf.keras.utils.register_keras_serializable()
+class LocalSpaceTransformerBlock(tf.keras.layers.Layer):
+    def __init__(self, *args, num_heads, kernel_size, mlp_dim, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.num_heads = num_heads
+        self.mlp_dim = mlp_dim
+        self.kernel_size = kernel_size
+
+    def build(self, input_shape):
+        height, hidden = input_shape[1], input_shape[-1]
+        num_patch = height // self.kernel_size
+        self.create_patch = CreatePatches_Timedist(patch_size=self.kernel_size)
+        self.pre_reshape = Reshape((num_patch**2, self.kernel_size**2, hidden))
+        self.trans = TimeDistributed(TransformerBlock(num_heads=self.num_heads, mlp_dim=self.mlp_dim))
+        self.post_reshape = Reshape((num_patch**2, self.kernel_size, self.kernel_size, hidden))
+        self.rebuild = RebuildFeature_Timedist(num_patch=num_patch)
+    
+    def call(self, inputs):
+        x = self.create_patch(inputs)
+        x = self.pre_reshape(x)
+        x = self.trans(x)
+        x = self.post_reshape(x)
+        x = self.rebuild(x)
+        return x
+
+    def get_config(self):
+        config = super().get_config()
+        config.update(
+            {
+                "num_heads": self.num_heads,
+                "mlp_dim": self.mlp_dim,
+                "kernel_size": self.kernel_size,
+            }
+        )
+        return config
+    
+    def compute_output_shape(self, input_shape):
+        return input_shape
+    
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
 
 # PPO
 class RunningMeanStd:
