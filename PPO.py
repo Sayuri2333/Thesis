@@ -220,7 +220,7 @@ class Agent:
         old_prediction = Input(shape=(NUM_ACTIONS,))
         input_actor = Input(shape=(8, 80, 80, 1))
         feature_actor = backbone(input_actor)
-        actor_dense = Dense(256, kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0))(feature_actor)
+        actor_dense = Dense(256, kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0), activation='relu')(feature_actor)
         out_actions = Dense(NUM_ACTIONS, activation='softmax', name='output', kernel_initializer=initializer)(actor_dense)
         model_actor = Model(inputs=[input_actor, advantage, old_prediction], outputs=[out_actions])
         if args.multi_gpu:
@@ -241,8 +241,8 @@ class Agent:
         # critic
         input_critic = Input(shape=(8, 80, 80, 1))
         feature_critic = backbone(input_critic)
-        critic_dense = Dense(256, kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0))(feature_critic)
-        out_value = Dense(1, kernel_initializer=initializer)(critic_dense)
+        critic_dense = Dense(256, kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0), activation='relu')(feature_critic)
+        out_value = Dense(1, kernel_initializer=initializer, activation='relu')(critic_dense)
         model_critic = Model(inputs=[input_critic], outputs=[out_value])
         if args.multi_gpu:
             model_critic = multi_gpu_model(model_critic, 2)
