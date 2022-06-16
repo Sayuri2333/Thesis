@@ -258,7 +258,7 @@ class Agent:
     def reset_env(self):
         self.episode += 1
         if self.episode % 100 == 0 or self.episode >= EPISODES:
-            self.val = True
+            self.val = False
         else:
             self.val = False
         self.initialization(resize_input(self.env.reset()))
