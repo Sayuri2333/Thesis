@@ -120,6 +120,7 @@ def resize_input(pic):
     return pic
 
 game = gym.make(args.game)
+game = gym.wrappers.RecordVideo(game, 'video', episode_trigger = lambda x: x % 10 == 0)
 
 if args.multi_gpu:
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
@@ -174,11 +175,13 @@ class Agent:
                              'Num_stacking': 8,
                              'batch_size': BATCH_SIZE,
                          },
-                         save_code=True
+                         save_code=True,
+                         monitor_gym=True
                         )
         config = wandb.config
         self.recorder_minp = []
         self.recorder_maxp = []
+        self.recorder_minaction = []
         self.state_norm = Normalization(shape=(80, 80, 1))
         self.backbone = eval(args.model)()
         self.actor, self.critic = self.build_actor_critic()
@@ -267,6 +270,7 @@ class Agent:
         DUMMY_VALUE, DUMMY_ACTION])
         self.recorder_maxp.append(np.max(p[0]))
         self.recorder_minp.append(np.min(p[0]))
+        self.recorder_minaction.append(np.argmin(p[0]))
         if self.val is False:
             # 按actor网络输出的概率进行选择
             action = np.random.choice(NUM_ACTIONS, p=np.nan_to_num(p[0]))
@@ -290,8 +294,10 @@ class Agent:
             wandb.log({'episode_reward': np.array(self.reward).sum()})
         wandb.log({'mean_max_p': np.array(self.recorder_maxp).mean()})
         wandb.log({'mean_min_p': np.array(self.recorder_minp).mean()})
+        wandb.log({'min_action_var': np.array(self.recorder_minaction).var()})
         self.recorder_maxp = []
         self.recorder_minp = []
+        self.recorder_minaction = []
         # 4. reward scaling
         for i in range(len(self.reward)):
             self.reward[i] = self.reward_scal(self.reward[i])
