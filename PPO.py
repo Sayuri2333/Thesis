@@ -107,7 +107,7 @@ def resize_input(pic):
     if args.game == 'SeaquestDeterministic-v4':
         pic = pic[7:182, 10:160, :]
     elif args.game == 'BreakoutDeterministic-v4':
-        pic = pic[20:200, :, :]
+        pic = pic
     elif args.game == 'FrostbiteDeterministic-v4':
         pic = pic[10:190, :, :]
     elif args.game == 'BeamRiderDeterministic-v4':
