@@ -176,6 +176,8 @@ class Agent:
                          }
                         )
         config = wandb.config
+        self.recorder_minp = []
+        self.recorder_maxp = []
         self.state_norm = Normalization(shape=(80, 80, 1))
         self.backbone = eval(args.model)()
         self.actor, self.critic = self.build_actor_critic()
@@ -209,7 +211,7 @@ class Agent:
         state = self.state_norm(state)
         self.state_set.append(state.copy())
         if len(self.state_set) > self.Num_stacking:
-            self.state_set = self.state_set[-self.Num_stacking:]
+            del self.state_set[:-self.Num_stacking]
     
     def build_actor_critic(self):
         backbone = eval(args.model)()
@@ -262,6 +264,8 @@ class Agent:
         # actor网络使用softmax函数输出概率
         p = self.actor.predict([np.array([np.concatenate([np.expand_dims(self.state_set[i], axis=0) for i in range(self.Num_stacking)], axis=0)]), 
         DUMMY_VALUE, DUMMY_ACTION])
+        self.recorder_maxp.append(np.max(p[0]))
+        self.recorder_minp.append(np.min(p[0]))
         if self.val is False:
             # 按actor网络输出的概率进行选择
             action = np.random.choice(NUM_ACTIONS, p=np.nan_to_num(p[0]))
@@ -283,6 +287,10 @@ class Agent:
         else:
             # 这个就是普通的训练用episode的总reward
             wandb.log({'episode_reward': np.array(self.reward).sum()})
+        wandb.log({'mean_max_p': np.array(self.recorder_maxp).mean()})
+        wandb.log({'mean_min_p': np.array(self.recorder_minp).mean()})
+        self.recorder_maxp = []
+        self.recorder_minp = []
         # 4. reward scaling
         for i in range(len(self.reward)):
             self.reward[i] = self.reward_scal(self.reward[i])
@@ -370,7 +378,6 @@ class Agent:
                 print('Test Episode ' + str(self.episode - EPISODES) + ' reward: ' + str(sum(self.reward)))
                 episode_reward.append(sum(self.reward))
                 self.reward = []
-                self.episode += 1
                 self.reset_env()
         print('Average Test Reward: ' + str(sum(episode_reward) / len(episode_reward)))
         self.runs.finish()
