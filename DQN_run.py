@@ -138,7 +138,8 @@ class DARQN:
                              'Num_stacking': 8,
                              'batch_size': 32,
                              'replay_memory': args.memory
-                         }
+                         },
+                         save_code=True
                         )
         config = wandb.config
         self.progress = ''

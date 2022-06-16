@@ -173,7 +173,8 @@ class Agent:
                              'gamma': GAMMA,
                              'Num_stacking': 8,
                              'batch_size': BATCH_SIZE,
-                         }
+                         },
+                         save_code=True
                         )
         config = wandb.config
         self.recorder_minp = []
