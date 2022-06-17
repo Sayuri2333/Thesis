@@ -18,6 +18,7 @@ from model_ppo import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFC
 import argparse
 import cv2
 from utils import RewardScaling, Normalization
+from Atari_Warppers import ClipRewardEnv, EpisodicLifeEnv, FireResetEnv, NoopResetEnv, MaxAndSkipEnv
 
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
@@ -103,14 +104,17 @@ parser.set_defaults(render=False)
 
 args = parser.parse_args()
 
-def resize_input(pic):
-    # RGB to Grey
-    pic = cv2.resize(pic, (80, 80))
-    pic = pic[:, :, 0:1] * 0.2989 + pic[:, :, 1:2] * 0.5870 + pic[:, :, 2:3] * 0.1140
-    return pic
-
 game = gym.make(args.game)
 game = gym.wrappers.RecordVideo(game, 'video', episode_trigger = lambda x: x % 10 == 0)
+game = NoopResetEnv(game, noop_max=30)
+game = MaxAndSkipEnv(game, skip=4)
+game = EpisodicLifeEnv(game)
+if "FIRE" in game.unwrapped.get_action_meanings():
+    game = FireResetEnv(game)
+game = ClipRewardEnv(game)
+game = gym.wrappers.ResizeObservation(game, (80, 80))
+game = gym.wrappers.GrayScaleObservation(game, keep_dim=True)
+# game = gym.wrappers.FrameStack(game, num_stack=8)
 
 if args.multi_gpu:
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
@@ -122,7 +126,7 @@ TEST_EPISODE = 500
 LOSS_CLIPPING = 0.2 # Only implemented clipping for the surrogate loss, paper said it was best
 EPOCHS = args.epochs
 BUFFER_SIZE = args.memory_size
-GAMMA = 0.9
+GAMMA = 0.99
 
 BATCH_SIZE = args.batch_size
 NUM_ACTIONS = game.action_space.n
@@ -184,7 +188,7 @@ class Agent:
         self.reward_over_time = []
         self.path = self.get_path()
         self.gradient_steps = 0
-        self.initialization(resize_input(self.env.reset()))
+        self.initialization(self.env.reset())
 
         self.reward_scal = RewardScaling()
 
@@ -251,7 +255,7 @@ class Agent:
             self.val = False
         else:
             self.val = False
-        self.initialization(resize_input(self.env.reset()))
+        self.initialization(self.env.reset())
         self.reward = []
 
     def get_action(self):
@@ -316,7 +320,7 @@ class Agent:
                 del tmp_batch[2][:-BUFFER_SIZE]
                 del self.reward[:-BUFFER_SIZE]
             # 更新当前state到下一步
-            self.skip_and_stack_frame(resize_input(observation))
+            self.skip_and_stack_frame(observation)
 
         if done:
             print('This episode steps: ' + str(step))
@@ -369,7 +373,7 @@ class Agent:
             action, _, _ = self.get_action()
             observation, reward, done, _ = self.env.step(action)
             self.reward.append(reward)
-            self.skip_and_stack_frame(resize_input(observation))
+            self.skip_and_stack_frame(observation)
             if done:
                 #wandb
                 print('Test Episode ' + str(self.episode - EPISODES) + ' reward: ' + str(sum(self.reward)))
