@@ -1,5 +1,4 @@
 # replay memory 调整
-from matplotlib.pyplot import step
 import numpy as np
 import os
 import gym
