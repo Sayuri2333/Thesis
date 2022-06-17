@@ -1,4 +1,5 @@
 # replay memory 调整
+from matplotlib.pyplot import step
 import numpy as np
 import os
 import gym
@@ -93,7 +94,7 @@ def multi_gpu_model(model, gpus):
 
 parser  = argparse.ArgumentParser(description='Training parameters')
 # 
-parser.add_argument('--episodes', type=int, default=15000, help="length of Replay Memory")
+parser.add_argument('--steps', type=int, default=500000, help="length of Replay Memory")
 parser.add_argument('--epochs', type=int, default=2, help="epochs on training batch data")
 parser.add_argument('--game', type=str, help="Games in Atari")
 parser.add_argument('--model', type=str, help="Model we use")
@@ -121,8 +122,8 @@ if args.multi_gpu:
 else:
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EPISODES = args.episodes
-TEST_EPISODE = 500
+STEPS = args.steps
+TEST_STEPS = 10000
 LOSS_CLIPPING = 0.2 # Only implemented clipping for the surrogate loss, paper said it was best
 EPOCHS = args.epochs
 BUFFER_SIZE = args.memory_size
@@ -131,7 +132,6 @@ GAMMA = 0.99
 BATCH_SIZE = args.batch_size
 NUM_ACTIONS = game.action_space.n
 STEPS_PER_EPOCH = 5
-TOTAL_TRAINING_STEP = EPOCHS * (BUFFER_SIZE / BATCH_SIZE) * EPISODES
 ENTROPY_LOSS = 0.01
 LR = 0.00025  # Lower lr stabilises training greatly
 
@@ -158,14 +158,14 @@ def proximal_policy_optimization_loss(advantage, old_prediction):
 
 class Agent:
     def __init__(self):
-        self.runs = wandb.init(project=args.game.split('/')[-1] + '_PPO_' + str(EPISODES),
+        self.runs = wandb.init(project=args.game.split('/')[-1] + '_PPO_' + str(STEPS),
                          name = args.model + '_PPO',
                          config = {
                              'learning_rate': LR,
                              'num_actions': NUM_ACTIONS,
-                             'Num_Training_episode': EPISODES,
-                             'Num_Testing_episode': TEST_EPISODE,
+                             'Num_Testing_steps': TEST_STEPS,
                              'gamma': GAMMA,
+                             'total_steps': STEPS,
                              'Num_stacking': 8,
                              'batch_size': BATCH_SIZE,
                          },
@@ -176,6 +176,7 @@ class Agent:
         self.recorder_minp = []
         self.recorder_maxp = []
         self.recorder_minaction = []
+        self.step = 0
         self.state_norm = Normalization(shape=(80, 80, 1))
         self.backbone = eval(args.model)()
         self.actor, self.critic = self.build_actor_critic()
@@ -183,17 +184,15 @@ class Agent:
         self.env = game
         self.Num_stacking = 8
         self.episode = 0
-        self.val = False
         self.reward = []
         self.reward_over_time = []
         self.path = self.get_path()
-        self.gradient_steps = 0
         self.initialization(self.env.reset())
 
         self.reward_scal = RewardScaling()
 
     def get_path(self):
-        name = 'PPO_Results/' + args.game + '_' + str(args.episodes) + '/' + args.model + '/'
+        name = 'PPO_Results/' + args.game + '_' + str(args.steps) + '/' + args.model + '/'
         return name
 
     # stack state into a state_set
@@ -226,7 +225,7 @@ class Agent:
         # 6. Learning Rate Decay
         learning_rate_fn = tf.keras.optimizers.schedules.PolynomialDecay(
             LR,
-            TOTAL_TRAINING_STEP,
+            STEPS,
             0.1 * LR,
             power=1)
         # 9. Adam Epsilon Parameter
@@ -251,10 +250,6 @@ class Agent:
 
     def reset_env(self):
         self.episode += 1
-        if self.episode % 100 == 0 or self.episode >= EPISODES:
-            self.val = False
-        else:
-            self.val = False
         self.initialization(self.env.reset())
         self.reward = []
 
@@ -265,12 +260,7 @@ class Agent:
         self.recorder_maxp.append(np.max(p[0]))
         self.recorder_minp.append(np.min(p[0]))
         self.recorder_minaction.append(np.argmin(p[0]))
-        if self.val is False:
-            # 按actor网络输出的概率进行选择
-            action = np.random.choice(NUM_ACTIONS, p=np.nan_to_num(p[0]))
-        else:
-            # 直接选择最大概率的
-            action = np.argmax(p[0])
+        action = np.random.choice(NUM_ACTIONS, p=np.nan_to_num(p[0]))
         action_matrix = np.zeros(NUM_ACTIONS)
         # 根据选择的动作生成one-hot动作向量
         action_matrix[action] = 1
@@ -279,16 +269,13 @@ class Agent:
     def transform_reward(self):
         # self.reward存储当前episode每一步的reward
         # 测试与训练的区别在于action选择的策略不同
+
         print('Reward of episode ' + str(self.episode) + ' is: ' + str(sum(self.reward)))
-        if self.val is True:
-            # self.val在episode结束时进行判定，决定下一个episode是否为测试用
-            wandb.log({'validation_reward': np.array(self.reward).sum()})
-        else:
-            # 这个就是普通的训练用episode的总reward
-            wandb.log({'episode_reward': np.array(self.reward).sum()})
-        wandb.log({'mean_max_p': np.array(self.recorder_maxp).mean()})
-        wandb.log({'mean_min_p': np.array(self.recorder_minp).mean()})
-        wandb.log({'min_action_var': np.array(self.recorder_minaction).var()})
+        # 这个就是普通的训练用episode的总reward
+        wandb.log({'episode_reward': np.array(self.reward).sum()}, step=self.step)
+        wandb.log({'mean_max_p': np.array(self.recorder_maxp).mean()}, step=self.step)
+        wandb.log({'mean_min_p': np.array(self.recorder_minp).mean()}, step=self.step)
+        wandb.log({'min_action_var': np.array(self.recorder_minaction).var()}, step=self.step)
         self.recorder_maxp = []
         self.recorder_minp = []
         self.recorder_minaction = []
@@ -308,7 +295,7 @@ class Agent:
         while not done:
             action, action_matrix, predicted_action = self.get_action()
             observation, reward, done, _ = self.env.step(action)
-            step += 1
+            self.step += 1
             self.reward.append(reward)
             # 存储当前状态，当前执行动作one-hot向量以及当前actor网络对于状态输出的动作概率向量
             tmp_batch[0].append(np.concatenate([np.expand_dims(self.state_set[i], axis=0) for i in range(self.Num_stacking)], axis=0))
@@ -323,18 +310,17 @@ class Agent:
             self.skip_and_stack_frame(observation)
 
         if done:
-            print('This episode steps: ' + str(step))
+            print('Current steps: ' + str(self.step))
             step = 0
             # 跑完一个episode之后，存储s, a, 实际v(s)以及预测a
             self.transform_reward()
-            if self.val is False:
-                for i in range(len(tmp_batch[0])):
-                    obs, action, pred = tmp_batch[0][i], tmp_batch[1][i], tmp_batch[2][i]
-                    r = self.reward[i]
-                    self.batch[0].append(obs)
-                    self.batch[1].append(action)
-                    self.batch[2].append(pred)
-                    self.batch[3].append(r)
+            for i in range(len(tmp_batch[0])):
+                obs, action, pred = tmp_batch[0][i], tmp_batch[1][i], tmp_batch[2][i]
+                r = self.reward[i]
+                self.batch[0].append(obs)
+                self.batch[1].append(action)
+                self.batch[2].append(pred)
+                self.batch[3].append(r)
             del tmp_batch
             self.reset_env()
         # cut old
@@ -350,7 +336,7 @@ class Agent:
     def run(self):
         if not os.path.exists(self.path):
             os.makedirs(self.path)
-        while self.episode < EPISODES:
+        while self.step < STEPS:
             # 跑n个episode，记录需要的信息
             obs, action, pred, reward = self.get_batch()
             # 因为要基于这个batch做更新，所以把基于改进前策略的动作概率向量当作old_pred
@@ -362,21 +348,22 @@ class Agent:
             # 1. Advantage Normalization
             advantage = (advantage - np.mean(advantage)) / np.std(advantage)
 
-            _ = self.actor.fit([obs, advantage, old_prediction], [action], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False, callbacks=[WandbCallback()])
-            _ = self.critic.fit([obs], [reward], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False, callbacks=[WandbCallback()])
+            actor_result = self.actor.fit([obs, advantage, old_prediction], [action], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False)
+            wandb.log({'actor_loss': np.mean(actor_result.history['loss'])}, step=self.step)
+            critic_result = self.critic.fit([obs], [reward], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False)
+            wandb.log({'critic_loss': np.mean(critic_result.history['loss'])}, step=self.step)
 
-            self.gradient_steps += 1
         self.reset_env()
         episode_reward = []
         self.actor.save(self.path + '/model.h5')
-        while self.episode < EPISODES + TEST_EPISODE:
+        while self.step < STEPS + TEST_STEPS:
             action, _, _ = self.get_action()
             observation, reward, done, _ = self.env.step(action)
             self.reward.append(reward)
             self.skip_and_stack_frame(observation)
             if done:
                 #wandb
-                print('Test Episode ' + str(self.episode - EPISODES) + ' reward: ' + str(sum(self.reward)))
+                print('Test Episode ' + str(self.episode) + ' reward: ' + str(sum(self.reward)))
                 episode_reward.append(sum(self.reward))
                 self.reward = []
                 self.reset_env()
