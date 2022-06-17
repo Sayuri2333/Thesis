@@ -104,16 +104,6 @@ parser.set_defaults(render=False)
 args = parser.parse_args()
 
 def resize_input(pic):
-    if args.game == 'SeaquestDeterministic-v4':
-        pic = pic[7:182, 10:160, :]
-    elif args.game == 'BreakoutDeterministic-v4':
-        pic = pic
-    elif args.game == 'FrostbiteDeterministic-v4':
-        pic = pic[10:190, :, :]
-    elif args.game == 'BeamRiderDeterministic-v4':
-        pic = pic[10:190, :, :]
-    elif args.name == 'GopherDeterministic-v4':
-        pic = pic[45:225, :, :]
     # RGB to Grey
     pic = cv2.resize(pic, (80, 80))
     pic = pic[:, :, 0:1] * 0.2989 + pic[:, :, 1:2] * 0.5870 + pic[:, :, 2:3] * 0.1140
@@ -132,7 +122,7 @@ TEST_EPISODE = 500
 LOSS_CLIPPING = 0.2 # Only implemented clipping for the surrogate loss, paper said it was best
 EPOCHS = args.epochs
 BUFFER_SIZE = args.memory_size
-GAMMA = 0.99
+GAMMA = 0.9
 
 BATCH_SIZE = args.batch_size
 NUM_ACTIONS = game.action_space.n
@@ -164,7 +154,7 @@ def proximal_policy_optimization_loss(advantage, old_prediction):
 
 class Agent:
     def __init__(self):
-        self.runs = wandb.init(project=args.game + '_PPO_' + str(EPISODES),
+        self.runs = wandb.init(project=args.game.split('/')[-1] + '_PPO_' + str(EPISODES),
                          name = args.model + '_PPO',
                          config = {
                              'learning_rate': LR,
