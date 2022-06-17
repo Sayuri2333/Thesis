@@ -1,9 +1,7 @@
-# replay memory 调整
 import numpy as np
 import os
 import gym
 from yaml import parse
-# import tensorflow
 import tensorflow.compat.v1 as tf
 tf.disable_eager_execution()
 tf.disable_v2_behavior()
@@ -16,7 +14,6 @@ from tensorflow.compat.v1.keras.utils import to_categorical
 from tensorflow.compat.v1.keras import losses
 from model_ppo import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFCA, MultiscaleTransformer
 import argparse
-import cv2
 from utils import RewardScaling, Normalization
 from Atari_Warppers import ClipRewardEnv, EpisodicLifeEnv, FireResetEnv, NoopResetEnv, MaxAndSkipEnv
 
@@ -93,7 +90,7 @@ def multi_gpu_model(model, gpus):
 
 parser  = argparse.ArgumentParser(description='Training parameters')
 # 
-parser.add_argument('--steps', type=int, default=500000, help="length of Replay Memory")
+parser.add_argument('--steps', type=int, default=2000000, help="length of Replay Memory")
 parser.add_argument('--epochs', type=int, default=2, help="epochs on training batch data")
 parser.add_argument('--game', type=str, help="Games in Atari")
 parser.add_argument('--model', type=str, help="Model we use")
@@ -105,15 +102,16 @@ parser.set_defaults(render=False)
 args = parser.parse_args()
 
 game = gym.make(args.game)
-game = gym.wrappers.RecordVideo(game, 'video', episode_trigger = lambda x: x % 10 == 0)
-game = NoopResetEnv(game, noop_max=30)
-game = MaxAndSkipEnv(game, skip=4)
-game = EpisodicLifeEnv(game)
+game = gym.wrappers.RecordVideo(game, 'video', episode_trigger = lambda x: x % 100 == 0)
+game = NoopResetEnv(game, noop_max=30) # delete when test
+# game = MaxAndSkipEnv(game, skip=4)
+game = EpisodicLifeEnv(game) # delete when test
 if "FIRE" in game.unwrapped.get_action_meanings():
     game = FireResetEnv(game)
-game = ClipRewardEnv(game)
+game = ClipRewardEnv(game) # delete when test
 game = gym.wrappers.ResizeObservation(game, (80, 80))
 game = gym.wrappers.GrayScaleObservation(game, keep_dim=True)
+game = gym.wrappers.normalize.NormalizeObservation(game)
 # game = gym.wrappers.FrameStack(game, num_stack=8)
 
 if args.multi_gpu:
@@ -176,7 +174,6 @@ class Agent:
         self.recorder_maxp = []
         self.recorder_minaction = []
         self.step = 0
-        self.state_norm = Normalization(shape=(80, 80, 1))
         self.backbone = eval(args.model)()
         self.actor, self.critic = self.build_actor_critic()
         self.batch = [[], [], [], []]
@@ -196,15 +193,11 @@ class Agent:
 
     # stack state into a state_set
     def initialization(self, state):  # 接收初始状态并初始化state_set
-        # 1. state normalization
-        state = self.state_norm(state)
         self.state_set = []
         for i in range(self.Num_stacking):
             self.state_set.append(state.copy())
 
     def skip_and_stack_frame(self, state):  # 将给定state存入state_set并返回最近8 frames
-        # 2. state normalization
-        state = self.state_norm(state)
         self.state_set.append(state.copy())
         if len(self.state_set) > self.Num_stacking:
             del self.state_set[:-self.Num_stacking]
@@ -342,6 +335,7 @@ class Agent:
             old_prediction = pred
             # 使用critic网络预测value值
             pred_values = self.critic.predict(obs)
+            wandb.log({"average_critic_score": np.mean(pred_values)}, step=self.step)
             # 实际的v(s)减去预测的v(s)得到adv
             advantage = reward - pred_values
             # 1. Advantage Normalization

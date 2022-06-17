@@ -28,6 +28,7 @@ class NoopResetEnv(gym.Wrapper):
             noops = self.override_num_noops
         else:
             noops = self.unwrapped.np_random.integers(1, self.noop_max + 1) #pylint: disable=E1101
+            print('noops in this episode: ' + str(noops))
         assert noops > 0
         obs = None
         for _ in range(noops):
