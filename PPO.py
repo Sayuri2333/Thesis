@@ -339,7 +339,7 @@ class Agent:
             # 实际的v(s)减去预测的v(s)得到adv
             advantage = reward - pred_values
             # 1. Advantage Normalization
-            advantage = (advantage - np.mean(advantage)) / np.std(advantage)
+            # advantage = (advantage - np.mean(advantage)) / np.std(advantage)
 
             actor_result = self.actor.fit([obs, advantage, old_prediction], [action], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False)
             wandb.log({'actor_loss': np.mean(actor_result.history['loss'])}, step=self.step)
