@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import gym
+from traitlets import observe
 from yaml import parse
 import tensorflow.compat.v1 as tf
 tf.disable_eager_execution()
@@ -15,7 +16,7 @@ from tensorflow.compat.v1.keras import losses
 from model_ppo import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFCA, MultiscaleTransformer
 import argparse
 from utils import RewardScaling, Normalization
-from Atari_Warppers import ClipRewardEnv, EpisodicLifeEnv, FireResetEnv, NoopResetEnv, MaxAndSkipEnv
+from Atari_Warppers import ClipRewardEnv, EpisodicLifeEnv, FireResetEnv, NoopResetEnv, MaxAndSkipEnv, NormalizedEnv
 
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
@@ -90,8 +91,8 @@ def multi_gpu_model(model, gpus):
 
 parser  = argparse.ArgumentParser(description='Training parameters')
 # 
-parser.add_argument('--steps', type=int, default=2000000, help="length of Replay Memory")
-parser.add_argument('--epochs', type=int, default=2, help="epochs on training batch data")
+parser.add_argument('--steps', type=int, default=500000, help="length of Replay Memory")
+parser.add_argument('--epochs', type=int, default=1, help="epochs on training batch data")
 parser.add_argument('--game', type=str, help="Games in Atari")
 parser.add_argument('--model', type=str, help="Model we use")
 parser.add_argument('--multi_gpu', action='store_true', help='If use multi GPU')
@@ -104,14 +105,14 @@ args = parser.parse_args()
 game = gym.make(args.game)
 game = gym.wrappers.RecordVideo(game, 'video', episode_trigger = lambda x: x % 100 == 0)
 game = NoopResetEnv(game, noop_max=30) # delete when test
-# game = MaxAndSkipEnv(game, skip=4)
+game = MaxAndSkipEnv(game, skip=4)
 game = EpisodicLifeEnv(game) # delete when test
 if "FIRE" in game.unwrapped.get_action_meanings():
     game = FireResetEnv(game)
 game = ClipRewardEnv(game) # delete when test
 game = gym.wrappers.ResizeObservation(game, (80, 80))
 game = gym.wrappers.GrayScaleObservation(game, keep_dim=True)
-game = gym.wrappers.normalize.NormalizeObservation(game)
+game = NormalizedEnv(game, ob=True, ret=False)
 # game = gym.wrappers.FrameStack(game, num_stack=8)
 
 if args.multi_gpu:
@@ -328,6 +329,10 @@ class Agent:
     def run(self):
         if not os.path.exists(self.path):
             os.makedirs(self.path)
+        # 初始化batch
+        while len(self.batch[0]) < BUFFER_SIZE:
+            self.get_batch()
+            print('Current batch size: ' + str(len(self.batch[0])))
         while self.step < STEPS:
             # 跑n个episode，记录需要的信息
             obs, action, pred, reward = self.get_batch()
@@ -339,7 +344,9 @@ class Agent:
             # 实际的v(s)减去预测的v(s)得到adv
             advantage = reward - pred_values
             # 1. Advantage Normalization
-            # advantage = (advantage - np.mean(advantage)) / np.std(advantage)
+            if np.std(advantage) == 0:
+                raise KeyboardInterrupt
+            advantage = (advantage - np.mean(advantage)) / np.std(advantage)
 
             actor_result = self.actor.fit([obs, advantage, old_prediction], [action], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False)
             wandb.log({'actor_loss': np.mean(actor_result.history['loss'])}, step=self.step)
