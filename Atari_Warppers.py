@@ -196,40 +196,84 @@ class NormalizedEnv(gym.core.Wrapper):
         obs = self.env.reset()
         return self._obfilt(obs)
 
-# class NormalizedEnv(gym.core.Wrapper):
-#     # ob=True, ret=True, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8
-#     def __init__(self, env):
-#         super(NormalizedEnv, self).__init__(env)
-#         # self.ob_rms = RunningMeanStd(shape=self.observation_space.shape) if ob else None
-#         # self.ret_rms = RunningMeanStd(shape=(1,)) if ret else None
-#         # self.clipob = clipob
-#         # self.cliprew = cliprew
-#         # self.ret = np.zeros(())
-#         # self.gamma = gamma
-#         # self.epsilon = epsilon
+"""Wrapper for resizing observations."""
+from typing import Union
 
-#     def step(self, action):
-#         obs, rews, dones, infos = self.env.step(action)
-#         # infos['real_reward'] = rews
-#         # self.ret = self.ret * self.gamma + rews
-#         # obs = self._obfilt(obs)
-#         obs = obs / 255.0
-#         # if self.ret_rms:
-#         #     self.ret_rms.update(np.array([self.ret].copy()))
-#         #     rews = np.clip(rews / np.sqrt(self.ret_rms.var + self.epsilon), -self.cliprew, self.cliprew)
-#         # self.ret = self.ret * (1-float(dones))
-#         return obs, rews, dones, infos
+import numpy as np
 
-#     def _obfilt(self, obs):
-#         if self.ob_rms:
-#             self.ob_rms.update(obs)
-#             obs = np.clip((obs - self.ob_rms.mean) / np.sqrt(self.ob_rms.var + self.epsilon), -self.clipob, self.clipob)
-#             return obs
-#         else:
-#             return obs
+import gym
+from gym.error import DependencyNotInstalled
+from gym.spaces import Box
 
-#     def reset(self):
-#         # self.ret = np.zeros(())
-#         obs = self.env.reset()
-#         return obs / 255.0
-#         # return self._obfilt(obs)
+
+class ResizeObservation(gym.ObservationWrapper):
+    """Resize the image observation.
+
+    This wrapper works on environments with image observations (or more generally observations of shape AxBxC) and resizes
+    the observation to the shape given by the 2-tuple :attr:`shape`. The argument :attr:`shape` may also be an integer.
+    In that case, the observation is scaled to a square of side-length :attr:`shape`.
+
+    Example:
+        >>> import gym
+        >>> env = gym.make('CarRacing-v1')
+        >>> env.observation_space.shape
+        (96, 96, 3)
+        >>> env = ResizeObservation(env, 64)
+        >>> env.observation_space.shape
+        (64, 64, 3)
+    """
+
+    def __init__(self, env: gym.Env, shape: Union[tuple, int]):
+        """Resizes image observations to shape given by :attr:`shape`.
+
+        Args:
+            env: The environment to apply the wrapper
+            shape: The shape of the resized observations
+        """
+        super().__init__(env)
+        if isinstance(shape, int):
+            shape = (shape, shape)
+        assert all(x > 0 for x in shape), shape
+
+        self.shape = tuple(shape)
+
+        obs_shape = self.shape + self.observation_space.shape[2:]
+        self.observation_space = Box(low=0, high=255, shape=obs_shape, dtype=np.uint8)
+
+    def observation(self, observation):
+        """Updates the observations by resizing the observation to shape given by :attr:`shape`.
+
+        Args:
+            observation: The observation to reshape
+
+        Returns:
+            The reshaped observations
+
+        Raises:
+            DependencyNotInstalled: opencv-python is not installed
+        """
+        try:
+            import cv2
+        except ImportError:
+            raise DependencyNotInstalled(
+                "opencv is not install, run `pip install gym[other]`"
+            )
+        if self.unwrapped.spec.id == 'SeaquestDeterministic-v4':
+            observation = observation[7:182, 10:160, :]
+        elif self.unwrapped.spec.id == 'BreakoutDeterministic-v4':
+            observation = observation[20:200, :, :]
+        elif self.unwrapped.spec.id == 'FrostbiteDeterministic-v4':
+            observation = observation[10:190, :, :]
+        elif self.unwrapped.spec.id == 'BeamRiderDeterministic-v4':
+            observation = observation[10:190, :, :]
+        elif self.unwrapped.spec.id == 'GopherDeterministic-v4':
+            observation = observation[45:225, :, :]
+        observation = cv2.resize(
+            observation, self.shape[::-1], interpolation=cv2.INTER_AREA
+        )
+        observation = cv2.resize(
+            observation, self.shape[::-1], interpolation=cv2.INTER_AREA
+        )
+        if observation.ndim == 2:
+            observation = np.expand_dims(observation, -1)
+        return observation

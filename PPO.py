@@ -15,8 +15,8 @@ from tensorflow.compat.v1.keras.utils import to_categorical
 from tensorflow.compat.v1.keras import losses
 from model_ppo import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFCA, MultiscaleTransformer
 import argparse
-from utils import RewardScaling, Normalization
-from Atari_Warppers import ClipRewardEnv, EpisodicLifeEnv, FireResetEnv, NoopResetEnv, MaxAndSkipEnv, NormalizedEnv
+from utils import RewardScaling
+from Atari_Warppers import ResizeObservation, ClipRewardEnv, EpisodicLifeEnv, FireResetEnv, NoopResetEnv, MaxAndSkipEnv, NormalizedEnv
 
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
@@ -105,15 +105,37 @@ args = parser.parse_args()
 game = gym.make(args.game)
 game = gym.wrappers.RecordVideo(game, 'video', episode_trigger = lambda x: x % 100 == 0)
 game = NoopResetEnv(game, noop_max=30) # delete when test
-game = MaxAndSkipEnv(game, skip=4)
+# game = MaxAndSkipEnv(game, skip=4)
 game = EpisodicLifeEnv(game) # delete when test
 if "FIRE" in game.unwrapped.get_action_meanings():
     game = FireResetEnv(game)
 game = ClipRewardEnv(game) # delete when test
-game = gym.wrappers.ResizeObservation(game, (80, 80))
+game = ResizeObservation(game, (80, 80))
 game = gym.wrappers.GrayScaleObservation(game, keep_dim=True)
 game = NormalizedEnv(game, ob=True, ret=False)
 # game = gym.wrappers.FrameStack(game, num_stack=8)
+
+# test game
+test_game = gym.make(args.game)
+test_game = gym.wrappers.RecordVideo(test_game, 'video', episode_trigger = lambda x: x % 10 == 0)
+# test_game = MaxAndSkipEnv(test_game, skip=4)
+if "FIRE" in test_game.unwrapped.get_action_meanings():
+    test_game = FireResetEnv(test_game)
+test_game = ResizeObservation(test_game, (80, 80))
+test_game = gym.wrappers.GrayScaleObservation(test_game, keep_dim=True)
+test_game = NormalizedEnv(test_game, ob=True, ret=False)
+
+# Initialize runningmean and std for test game
+test_game.reset()
+for i in range(100):
+    done = False
+    step = 0
+    while not done:
+        step += 1
+        random_action = test_game.action_space.sample()
+        pic, reward, done, _ = test_game.step(random_action)
+    test_game.reset()
+
 
 if args.multi_gpu:
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
@@ -156,7 +178,7 @@ def proximal_policy_optimization_loss(advantage, old_prediction):
 
 class Agent:
     def __init__(self):
-        self.runs = wandb.init(project=args.game.split('/')[-1] + '_PPO_' + str(STEPS),
+        self.runs = wandb.init(project=args.game.split('/')[-1] + '_PPO_' + str(STEPS) if '/' in args.game else args.game + '_PPO_' + str(STEPS),
                          name = args.model + '_PPO',
                          config = {
                              'learning_rate': LR,
@@ -352,20 +374,21 @@ class Agent:
             wandb.log({'actor_loss': np.mean(actor_result.history['loss'])}, step=self.step)
             critic_result = self.critic.fit([obs], [reward], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False)
             wandb.log({'critic_loss': np.mean(critic_result.history['loss'])}, step=self.step)
-
+        self.env = test_game
         self.reset_env()
         episode_reward = []
         self.actor.save(self.path + '/model.h5')
+        # use test_game to test
         while self.step < STEPS + TEST_STEPS:
             action, _, _ = self.get_action()
             observation, reward, done, _ = self.env.step(action)
+            self.step += 1
             self.reward.append(reward)
             self.skip_and_stack_frame(observation)
             if done:
                 #wandb
                 print('Test Episode ' + str(self.episode) + ' reward: ' + str(sum(self.reward)))
                 episode_reward.append(sum(self.reward))
-                self.reward = []
                 self.reset_env()
         print('Average Test Reward: ' + str(sum(episode_reward) / len(episode_reward)))
         self.runs.finish()
