@@ -124,7 +124,7 @@ test_game = ResizeObservation(test_game, (80, 80))
 test_game = gym.wrappers.GrayScaleObservation(test_game, keep_dim=True)
 test_game = NormalizedEnv(test_game, ob=True, ret=False)
 
-# Initialize runningmean and std for test game
+# Initialize runningmean and std for train and test game
 test_game.reset()
 for i in range(100):
     done = False
@@ -135,6 +135,15 @@ for i in range(100):
         pic, reward, done, _ = test_game.step(random_action)
     test_game.reset()
 
+game.reset()
+for i in range(100):
+    done = False
+    step = 0
+    while not done:
+        step += 1
+        random_action = game.action_space.sample()
+        pic, reward, done, _ = game.step(random_action)
+    game.reset()
 
 if args.multi_gpu:
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'

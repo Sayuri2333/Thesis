@@ -258,15 +258,15 @@ class ResizeObservation(gym.ObservationWrapper):
             raise DependencyNotInstalled(
                 "opencv is not install, run `pip install gym[other]`"
             )
-        if self.unwrapped.spec.id == 'SeaquestDeterministic-v4':
+        if self.unwrapped.spec.id == 'ALE/Seaquest-v5':
             observation = observation[7:182, 10:160, :]
-        elif self.unwrapped.spec.id == 'BreakoutDeterministic-v4':
+        elif self.unwrapped.spec.id == 'ALE/Breakout-v5':
             observation = observation[20:200, :, :]
-        elif self.unwrapped.spec.id == 'FrostbiteDeterministic-v4':
+        elif self.unwrapped.spec.id == 'ALE/Frostbite-v5':
             observation = observation[10:190, :, :]
-        elif self.unwrapped.spec.id == 'BeamRiderDeterministic-v4':
+        elif self.unwrapped.spec.id == 'ALE/BeamRider-v5':
             observation = observation[10:190, :, :]
-        elif self.unwrapped.spec.id == 'GopherDeterministic-v4':
+        elif self.unwrapped.spec.id == 'ALE/Gopher-v5':
             observation = observation[45:225, :, :]
         observation = cv2.resize(
             observation, self.shape[::-1], interpolation=cv2.INTER_AREA
