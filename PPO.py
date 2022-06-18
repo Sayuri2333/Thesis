@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import gym
-from traitlets import observe
 from yaml import parse
 import tensorflow.compat.v1 as tf
 tf.disable_eager_execution()
