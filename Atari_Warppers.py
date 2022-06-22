@@ -277,3 +277,294 @@ class ResizeObservation(gym.ObservationWrapper):
         if observation.ndim == 2:
             observation = np.expand_dims(observation, -1)
         return observation
+
+class NormalizeObservation(gym.core.Wrapper):
+    """This wrapper will normalize observations s.t. each coordinate is centered with unit variance.
+    Note:
+        The normalization depends on past trajectories and observations will not be normalized correctly if the wrapper was
+        newly instantiated or the policy was changed recently.
+    """
+
+    def __init__(self, env: gym.Env, epsilon: float = 1e-8):
+        """This wrapper will normalize observations s.t. each coordinate is centered with unit variance.
+        Args:
+            env (Env): The environment to apply the wrapper
+            epsilon: A stability parameter that is used when scaling the observations.
+        """
+        super().__init__(env)
+        self.num_envs = getattr(env, "num_envs", 1)
+        self.is_vector_env = getattr(env, "is_vector_env", False)
+        if self.is_vector_env:
+            self.obs_rms = RunningMeanStd(shape=self.single_observation_space.shape)
+        else:
+            self.obs_rms = RunningMeanStd(shape=self.observation_space.shape)
+        self.epsilon = epsilon
+
+    def step(self, action):
+        """Steps through the environment and normalizes the observation."""
+        obs, rews, dones, infos = self.env.step(action)
+        if self.is_vector_env:
+            obs = self.normalize(obs)
+        else:
+            obs = self.normalize(np.array([obs]))[0]
+        return obs, rews, dones, infos
+
+    def reset(self, **kwargs):
+        """Resets the environment and normalizes the observation."""
+        return_info = kwargs.get("return_info", False)
+        if return_info:
+            obs, info = self.env.reset(**kwargs)
+        else:
+            obs = self.env.reset(**kwargs)
+        if self.is_vector_env:
+            obs = self.normalize(obs)
+        else:
+            obs = self.normalize(np.array([obs]))[0]
+        if not return_info:
+            return obs
+        else:
+            return obs, info
+
+    def normalize(self, obs):
+        """Normalises the observation using the running mean and variance of the observations."""
+        self.obs_rms.update(obs)
+        return (obs - self.obs_rms.mean) / np.sqrt(self.obs_rms.var + self.epsilon)
+
+
+
+class NormalizeReward(gym.core.Wrapper):
+    r"""This wrapper will normalize immediate rewards s.t. their exponential moving average has a fixed variance.
+    The exponential moving average will have variance :math:`(1 - \gamma)^2`.
+    Note:
+        The scaling depends on past trajectories and rewards will not be scaled correctly if the wrapper was newly
+        instantiated or the policy was changed recently.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        gamma: float = 0.99,
+        epsilon: float = 1e-8,
+    ):
+        """This wrapper will normalize immediate rewards s.t. their exponential moving average has a fixed variance.
+        Args:
+            env (env): The environment to apply the wrapper
+            epsilon (float): A stability parameter
+            gamma (float): The discount factor that is used in the exponential moving average.
+        """
+        super().__init__(env)
+        self.num_envs = getattr(env, "num_envs", 1)
+        self.is_vector_env = getattr(env, "is_vector_env", False)
+        self.return_rms = RunningMeanStd(shape=())
+        self.returns = np.zeros(self.num_envs)
+        self.gamma = gamma
+        self.epsilon = epsilon
+
+    def step(self, action):
+        """Steps through the environment, normalizing the rewards returned."""
+        obs, rews, dones, infos = self.env.step(action)
+        if not self.is_vector_env:
+            rews = np.array([rews])
+        self.returns = self.returns * self.gamma + rews
+        rews = self.normalize(rews)
+        self.returns[dones] = 0.0
+        if not self.is_vector_env:
+            rews = rews[0]
+        return obs, rews, dones, infos
+
+    def normalize(self, rews):
+        """Normalizes the rewards with the running mean rewards and their variance."""
+        self.return_rms.update(self.returns)
+        return rews / np.sqrt(self.return_rms.var + self.epsilon)
+
+
+import numpy as np
+from copy import deepcopy
+
+from gym import logger
+from gym.vector.vector_env import VectorEnv
+from gym.vector.utils import concatenate, create_empty_array
+
+__all__ = ["SyncVectorEnv"]
+
+
+class SyncVectorEnv(VectorEnv):
+    """Vectorized environment that serially runs multiple environments.
+
+    Parameters
+    ----------
+    env_fns : iterable of callable
+        Functions that create the environments.
+
+    observation_space : `gym.spaces.Space` instance, optional
+        Observation space of a single environment. If `None`, then the
+        observation space of the first environment is taken.
+
+    action_space : `gym.spaces.Space` instance, optional
+        Action space of a single environment. If `None`, then the action space
+        of the first environment is taken.
+
+    copy : bool (default: `True`)
+        If `True`, then the `reset` and `step` methods return a copy of the
+        observations.
+    """
+
+    def __init__(self, env_fns, observation_space=None, action_space=None, copy=True):
+        self.env_fns = env_fns
+        self.envs = [env_fn() for env_fn in env_fns]
+        self.copy = copy
+        self.metadata = self.envs[0].metadata
+
+        if (observation_space is None) or (action_space is None):
+            observation_space = observation_space or self.envs[0].observation_space
+            action_space = action_space or self.envs[0].action_space
+        super(SyncVectorEnv, self).__init__(
+            num_envs=len(env_fns),
+            observation_space=observation_space,
+            action_space=action_space,
+        )
+
+        self._check_observation_spaces()
+        self.observations = create_empty_array(
+            self.single_observation_space, n=self.num_envs, fn=np.zeros
+        )
+        self._rewards = np.zeros((self.num_envs,), dtype=np.float64)
+        self._dones = np.zeros((self.num_envs,), dtype=np.bool_)
+        self._actions = None
+
+    def seed(self, seeds=None):
+        if seeds is None:
+            seeds = [None for _ in range(self.num_envs)]
+        if isinstance(seeds, int):
+            seeds = [seeds + i for i in range(self.num_envs)]
+        assert len(seeds) == self.num_envs
+
+        for env, seed in zip(self.envs, seeds):
+            env.seed(seed)
+
+    def reset_wait(self):
+        self._dones[:] = False
+        observations = []
+        for env in self.envs:
+            observation = env.reset()
+            observations.append(observation)
+        print(observations[0].shape)
+        print(observations[0].dtype)
+        print(len(observations))
+        print(self.observations.shape)
+        print(self.observations.dtype)
+        self.observations = concatenate(
+            observations, self.observations, self.single_observation_space
+        )
+
+        return deepcopy(self.observations) if self.copy else self.observations
+
+    def step_async(self, actions):
+        self._actions = actions
+
+    def step_wait(self):
+        observations, infos = [], []
+        for i, (env, action) in enumerate(zip(self.envs, self._actions)):
+            observation, self._rewards[i], self._dones[i], info = env.step(action)
+            if self._dones[i]:
+                observation = env.reset()
+            observations.append(observation)
+            infos.append(info)
+        self.observations = concatenate(
+            observations, self.observations, self.single_observation_space
+        )
+
+        return (
+            deepcopy(self.observations) if self.copy else self.observations,
+            np.copy(self._rewards),
+            np.copy(self._dones),
+            infos,
+        )
+
+    def close_extras(self, **kwargs):
+        [env.close() for env in self.envs]
+
+    def _check_observation_spaces(self):
+        for env in self.envs:
+            if not (env.observation_space == self.single_observation_space):
+                break
+        else:
+            return True
+        raise RuntimeError(
+            "Some environments have an observation space "
+            "different from `{0}`. In order to batch observations, the "
+            "observation spaces from all environments must be "
+            "equal.".format(self.single_observation_space)
+        )
+
+
+def create_empty_array(space, n=1, fn=np.zeros):
+    """Create an empty (possibly nested) numpy array.
+
+    Parameters
+    ----------
+    space : `gym.spaces.Space` instance
+        Observation space of a single environment in the vectorized environment.
+
+    n : int
+        Number of environments in the vectorized environment. If `None`, creates
+        an empty sample from `space`.
+
+    fn : callable
+        Function to apply when creating the empty numpy array. Examples of such
+        functions are `np.empty` or `np.zeros`.
+
+    Returns
+    -------
+    out : tuple, dict, or `np.ndarray`
+        The output object. This object is a (possibly nested) numpy array.
+
+    Example
+    -------
+    >>> from gym.spaces import Box, Dict
+    >>> space = Dict({
+    ... 'position': Box(low=0, high=1, shape=(3,), dtype=np.float32),
+    ... 'velocity': Box(low=0, high=1, shape=(2,), dtype=np.float32)})
+    >>> create_empty_array(space, n=2, fn=np.zeros)
+    OrderedDict([('position', array([[0., 0., 0.],
+                                     [0., 0., 0.]], dtype=float32)),
+                 ('velocity', array([[0., 0.],
+                                     [0., 0.]], dtype=float32))])
+    """
+    if isinstance(space, _BaseGymSpaces):
+        print('..........')
+        return create_empty_array_base(space, n=n, fn=fn)
+    elif isinstance(space, Tuple):
+        print('!!!!!!!!')
+        return create_empty_array_tuple(space, n=n, fn=fn)
+    elif isinstance(space, Dict):
+        return create_empty_array_dict(space, n=n, fn=fn)
+    elif isinstance(space, Space):
+        return create_empty_array_custom(space, n=n, fn=fn)
+    else:
+        raise ValueError(
+            "Space of type `{0}` is not a valid `gym.Space` "
+            "instance.".format(type(space))
+        )
+
+
+def create_empty_array_base(space, n=1, fn=np.zeros):
+    shape = space.shape if (n is None) else (n,) + space.shape
+    return fn(shape, dtype=space.dtype)
+
+
+def create_empty_array_tuple(space, n=1, fn=np.zeros):
+    return tuple(create_empty_array(subspace, n=n, fn=fn) for subspace in space.spaces)
+
+
+def create_empty_array_dict(space, n=1, fn=np.zeros):
+    return OrderedDict(
+        [
+            (key, create_empty_array(subspace, n=n, fn=fn))
+            for (key, subspace) in space.spaces.items()
+        ]
+    )
+
+
+def create_empty_array_custom(space, n=1, fn=np.zeros):
+    return None

@@ -112,7 +112,28 @@ game = ClipRewardEnv(game) # delete when test
 game = ResizeObservation(game, (80, 80))
 game = gym.wrappers.GrayScaleObservation(game, keep_dim=True)
 game = NormalizedEnv(game, ob=True, ret=False)
+game = gym.wrappers.FrameStack(game, 8)
 # game = gym.wrappers.FrameStack(game, num_stack=8)
+
+def make_env(gym_id, seed, idx, run_name):
+    def thunk():
+        env = gym.make(gym_id)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        if idx == 0:
+            env = gym.wrappers.RecordVideo(env, f"videos/{run_name}", episode_trigger = lambda x: x % 100 == 0)
+        env = NoopResetEnv(env, noop_max=30)
+        # env = MaxAndSkipEnv(env, skip=4)
+        env = EpisodicLifeEnv(env)
+        if "FIRE" in env.unwrapped.get_action_meanings():
+            env = FireResetEnv(env)
+        env = ClipRewardEnv(env)
+        env = ResizeObservation(env, (80, 80))
+        env = gym.wrappers.GrayScaleObservation(env, keep_dim=True)
+        env = NormalizedEnv(env, ob=True, ret=True)
+        env = gym.wrappers.FrameStack(env, 8)
+        return env
+
+    return thunk
 
 # test game
 test_game = gym.make(args.game)
@@ -123,6 +144,26 @@ if "FIRE" in test_game.unwrapped.get_action_meanings():
 test_game = ResizeObservation(test_game, (80, 80))
 test_game = gym.wrappers.GrayScaleObservation(test_game, keep_dim=True)
 test_game = NormalizedEnv(test_game, ob=True, ret=False)
+
+def make_env(gym_id, idx, run_name):
+    def thunk():
+        env = gym.make(gym_id)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        if idx == 0:
+        env = gym.wrappers.RecordVideo(env, f"videos/{run_name}", episode_trigger = lambda x: x % 100 == 0)
+        env = NoopResetEnv(env, noop_max=30)
+        # env = MaxAndSkipEnv(env, skip=4)
+        env = EpisodicLifeEnv(env)
+        if "FIRE" in env.unwrapped.get_action_meanings():
+            env = FireResetEnv(env)
+        env = ClipRewardEnv(env)
+        env = ResizeObservation(env, (80, 80))
+        env = gym.wrappers.GrayScaleObservation(env, keep_dim=True)
+        env = NormalizedEnv(env, ob=True, ret=False)
+        env = gym.wrappers.FrameStack(env, 8)
+        return env
+
+    return thunk
 
 # Initialize runningmean and std for train and test game
 test_game.reset()
