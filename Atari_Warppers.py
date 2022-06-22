@@ -2,6 +2,8 @@
 
 import numpy as np
 import os
+
+from torch import float32
 os.environ.setdefault('PATH', '')
 from collections import deque
 import gym
@@ -59,6 +61,19 @@ class FireResetEnv(gym.Wrapper):
 
     def step(self, ac):
         return self.env.step(ac)
+
+class AutoResetEnv(gym.Wrapper):
+    def __init__(self, env):
+        gym.Wrapper.__init__(self, env)
+    
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        if done:
+            obs= self.env.reset()
+        return obs, reward, done, info
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
 
 class EpisodicLifeEnv(gym.Wrapper):
     def __init__(self, env):
@@ -311,19 +326,19 @@ class NormalizeObservation(gym.core.Wrapper):
 
     def reset(self, **kwargs):
         """Resets the environment and normalizes the observation."""
-        return_info = kwargs.get("return_info", False)
-        if return_info:
-            obs, info = self.env.reset(**kwargs)
-        else:
-            obs = self.env.reset(**kwargs)
+        # return_info = kwargs.get("return_info", False)
+        # if return_info:
+        #     obs, info = self.env.reset(**kwargs)
+        # else:
+        obs = self.env.reset(**kwargs)
         if self.is_vector_env:
             obs = self.normalize(obs)
         else:
             obs = self.normalize(np.array([obs]))[0]
-        if not return_info:
-            return obs
-        else:
-            return obs, info
+        # if not return_info:
+        #     return obs
+        # else:
+        return obs
 
     def normalize(self, obs):
         """Normalises the observation using the running mean and variance of the observations."""
@@ -383,7 +398,8 @@ from copy import deepcopy
 
 from gym import logger
 from gym.vector.vector_env import VectorEnv
-from gym.vector.utils import concatenate, create_empty_array
+from gym.vector.utils import concatenate
+
 
 __all__ = ["SyncVectorEnv"]
 
@@ -448,11 +464,6 @@ class SyncVectorEnv(VectorEnv):
         for env in self.envs:
             observation = env.reset()
             observations.append(observation)
-        print(observations[0].shape)
-        print(observations[0].dtype)
-        print(len(observations))
-        print(self.observations.shape)
-        print(self.observations.dtype)
         self.observations = concatenate(
             observations, self.observations, self.single_observation_space
         )
@@ -497,6 +508,11 @@ class SyncVectorEnv(VectorEnv):
             "equal.".format(self.single_observation_space)
         )
 
+import numpy as np
+
+from gym.spaces import Space, Tuple, Dict
+from gym.vector.utils.spaces import _BaseGymSpaces
+from collections import OrderedDict
 
 def create_empty_array(space, n=1, fn=np.zeros):
     """Create an empty (possibly nested) numpy array.
@@ -532,10 +548,8 @@ def create_empty_array(space, n=1, fn=np.zeros):
                                      [0., 0.]], dtype=float32))])
     """
     if isinstance(space, _BaseGymSpaces):
-        print('..........')
         return create_empty_array_base(space, n=n, fn=fn)
     elif isinstance(space, Tuple):
-        print('!!!!!!!!')
         return create_empty_array_tuple(space, n=n, fn=fn)
     elif isinstance(space, Dict):
         return create_empty_array_dict(space, n=n, fn=fn)
@@ -550,7 +564,7 @@ def create_empty_array(space, n=1, fn=np.zeros):
 
 def create_empty_array_base(space, n=1, fn=np.zeros):
     shape = space.shape if (n is None) else (n,) + space.shape
-    return fn(shape, dtype=space.dtype)
+    return fn(shape, dtype=np.float64)
 
 
 def create_empty_array_tuple(space, n=1, fn=np.zeros):
