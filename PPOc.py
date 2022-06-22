@@ -118,6 +118,9 @@ def make_env(gym_id, seed, idx, run_name):
         env = gym.wrappers.GrayScaleObservation(env, keep_dim=True)
         env = NormalizedEnv(env, ob=True, ret=True)
         env = gym.wrappers.FrameStack(env, 8)
+        env.seed(seed)
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
         return env
 
     return thunk
@@ -219,7 +222,7 @@ class Agent:
                              'Num_Testing_steps': TEST_STEPS,
                              'gamma': GAMMA,
                              'total_steps': STEPS,
-                             'Num_stacking': 8,
+                             'Num_stacking': 4,
                              'num_envs': BATCH_SIZE,
                              'num_steps': args.num_steps,
                              'num_envs': args.num_envs
@@ -263,10 +266,9 @@ class Agent:
         if args.multi_gpu:
             model_actor = multi_gpu_model(model_actor, 2)
         # 6. Learning Rate Decay
-        learning_rate_fn = LR
         learning_rate_fn = tf.keras.optimizers.schedules.PolynomialDecay(
             LR,
-            STEPS,
+            10000,
             0.1 * LR,
             power=1)
         # 9. Adam Epsilon Parameter
@@ -288,7 +290,7 @@ class Agent:
         # 7. Gradient Clip
         learning_rate_fn1 = tf.keras.optimizers.schedules.PolynomialDecay(
             LR,
-            STEPS,
+            10000,
             0.1 * LR,
             power=1)
         model_critic.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate_fn1, epsilon=1e-05, clipnorm=0.5),

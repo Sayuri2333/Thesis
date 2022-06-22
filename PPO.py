@@ -305,7 +305,11 @@ class Agent:
         if args.multi_gpu:
             model_actor = multi_gpu_model(model_actor, 2)
         # 6. Learning Rate Decay
-        learning_rate_fn = LR
+        learning_rate_fn = tf.keras.optimizers.schedules.PolynomialDecay(
+            LR,
+            10000,
+            0.1 * LR,
+            power=1)
         # 9. Adam Epsilon Parameter
         # 7. Gradient Clip
         model_actor.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate_fn, epsilon=1e-05, clipnorm=0.5),

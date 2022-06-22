@@ -883,6 +883,20 @@ class MultiscaleTransformerBlock(tf.keras.layers.Layer):
         return cls(**config)
 
 @tf.keras.utils.register_keras_serializable()
+class TemporalToChannel(tf.keras.layers.Layer):
+    def __init__(self, *args, **kwargs):
+        super(TemporalToChannel, self).__init__(*args, **kwargs)
+    
+    def call(self, inputs):
+        # [batch, temporal, H, W, C]
+        input_shape = list(K.int_shape(inputs))
+        pics = []
+        for t in range(input_shape[1]):
+            pics.append(inputs[:, t, :, :, :])
+        return K.concatenate(pics, axis=-1)
+
+
+@tf.keras.utils.register_keras_serializable()
 class SpaceTimeLocalSelfAttention(tf.keras.layers.Layer):
     def __init__(self, *args, num_heads, kernel_size, **kwargs):
         self.num_heads = num_heads

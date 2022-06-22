@@ -4,16 +4,18 @@ tf.disable_eager_execution()
 tf.disable_v2_behavior()
 from tensorflow.compat.v1.keras.models import Model
 from tensorflow.compat.v1.keras.layers import MaxPooling3D, Conv3D, GlobalAveragePooling2D, concatenate, Add, Multiply, Permute, Softmax, AveragePooling2D, MaxPooling2D, Convolution2D, LeakyReLU, add, Reshape, Lambda, Conv2D, LSTMCell, LSTM, Dense, RepeatVector, TimeDistributed, Input, BatchNormalization, multiply, Concatenate, Flatten, Activation, dot, Dot, Dropout
-from utils import LocalSpaceTransformerBlock, SinusoidalPositionEmbedding, TransformerBlock, VisionTransformerBlock, CreatePatches, Add_Embedding_Layer, TemporalEmbedding, ConvTransformerBlock, multiFocusConvAttention, MultiscaleTransformerBlock, DownSampleTransformerBlock, SpatialEmbedding, SpaceTimeLocalTransformerBlock
+from utils import TemporalToChannel, LocalSpaceTransformerBlock, SinusoidalPositionEmbedding, TransformerBlock, VisionTransformerBlock, CreatePatches, Add_Embedding_Layer, TemporalEmbedding, ConvTransformerBlock, multiFocusConvAttention, MultiscaleTransformerBlock, DownSampleTransformerBlock, SpatialEmbedding, SpaceTimeLocalTransformerBlock
 
 
 initializer = tf.keras.initializers.Orthogonal(gain=1.0)
 
 def DQN():
     input_state = Input(shape=(8,80,80,1))
-    conv1 = TimeDistributed(Conv2D(16, 8, (4,4), activation='relu', padding='same', kernel_initializer=initializer))(input_state)
-    conv2 = TimeDistributed(Conv2D(32, 4, (2,2), activation='relu', padding='same', kernel_initializer=initializer))(conv1)
-    flat = Flatten()(conv2)
+    input_state1 = TemporalToChannel()(input_state)
+    conv1 = Conv2D(32, 8, (4,4), activation='relu', padding='same', kernel_initializer=initializer)(input_state1)
+    conv2 = Conv2D(64, 4, (2,2), activation='relu', padding='same', kernel_initializer=initializer)(conv1)
+    conv3 = Conv2D(64, 3, (1,1), activation='relu', padding='same', kernel_initializer=initializer)(conv2)
+    flat = Flatten()(conv3)
     model = Model(inputs=input_state, outputs=flat)
     return model
 
@@ -90,7 +92,7 @@ def MultiscaleTransformer():
     with_temp = TemporalEmbedding(output_dim=64)(encoded)
     with_ST = SpatialEmbedding(output_dim=64)(with_temp)
     _att1 = DownSampleTransformerBlock(num_heads=4, mlp_dim=256)(with_ST)
-    _att2 = TimeDistributed(LocalSpaceTransformerBlock(num_heads=4, kernel_size=5, mlp_dim=256))(_att1)
+    _att2 = TimeDistributed(SpaceTimeLocalTransformerBlock(num_heads=4, kernel_size=5, mlp_dim=256))(_att1)
     _att3 = MultiscaleTransformerBlock(num_heads=4, mlp_dim=256, is_pooling=True)(_att2)
     _att4 = MultiscaleTransformerBlock(num_heads=4, mlp_dim=256, is_pooling=False)(_att3)
     last_frame = Lambda(lambda x: x[:, -1, :, :, :])(_att4)
