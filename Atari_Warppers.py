@@ -3,7 +3,6 @@
 import numpy as np
 import os
 
-from torch import float32
 os.environ.setdefault('PATH', '')
 from collections import deque
 import gym
