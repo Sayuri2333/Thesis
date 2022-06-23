@@ -775,17 +775,19 @@ class MultiHeadPoolingAttention(tf.keras.layers.Layer):
         self.query_dense_array = []
         self.key_dense_array = []
         self.value_dense_array = []
+        self.linear_dense_array = []
         for i in range(num_heads):
             self.query_dense_array.append(Conv3D(self.d_model, kernel_size=[1,1,1], strides=[1,1,1], activation='linear', kernel_initializer=initializer))
             self.key_dense_array.append(Conv3D(self.d_model, kernel_size=[1,1,1], strides=[1,1,1], activation='linear', kernel_initializer=initializer))
             self.value_dense_array.append(Conv3D(self.d_model, kernel_size=[1,1,1], strides=[1,1,1], activation='linear', kernel_initializer=initializer))
+            self.linear_dense_array.append(Dense(self.d_model, activation='linear', kernel_initializer=initializer))
 
     def attention(self, query, key, value):
         score = tf.matmul(query, key, transpose_b=True)
         scaled_score = score / tf.math.sqrt(float(self.d_model))
         weights = tf.nn.softmax(scaled_score, axis=-1)
         output = tf.matmul(weights, value)
-        return output
+        return output + query
 
     def one_head(self, inputs, i):
         input_seg = inputs[:, :, :, :, i*self.d_model: (i+1)*self.d_model]
@@ -801,7 +803,7 @@ class MultiHeadPoolingAttention(tf.keras.layers.Layer):
         reshaped_key = K.reshape(pooling_key, [-1, kv_shape[1]*kv_shape[2]*kv_shape[3], kv_shape[4]])
         reshaped_value = K.reshape(pooling_value, [-1, kv_shape[1]*kv_shape[2]*kv_shape[3], kv_shape[4]])
         att = self.attention(reshaped_query, reshaped_key, reshaped_value)
-
+        att = self.linear_dense_array[i](att)
         resi = self.q_pooling(input_seg)
         resahped_att = K.reshape(att, [-1]+query_shape[1:])
 
@@ -829,15 +831,16 @@ class MultiHeadPoolingAttention(tf.keras.layers.Layer):
 
 @tf.keras.utils.register_keras_serializable()
 class MultiscaleTransformerBlock(tf.keras.layers.Layer):
-    def __init__(self, *args, num_heads, mlp_dim, is_pooling, **kwargs):
+    def __init__(self, *args, num_heads, mlp_dim, is_pooling, is_expanding, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_heads = num_heads
         self.mlp_dim = mlp_dim
         self.is_pooling = is_pooling
+        self.is_expanding = is_expanding
     
     def build(self, input_shape):
         self.att = MultiHeadPoolingAttention(num_heads=self.num_heads, is_pooling=self.is_pooling)
-        if not self.is_pooling:
+        if not self.is_expanding:
             self.mlpblock = tf.keras.Sequential(
                 [
                     Conv3D(self.mlp_dim, kernel_size=[1,1,1], strides=[1,1,1], activation='relu', kernel_initializer=initializer),
@@ -859,7 +862,7 @@ class MultiscaleTransformerBlock(tf.keras.layers.Layer):
         x = inputs
         x = self.att(x)
         y = self.mlpblock(x)
-        if self.is_pooling:
+        if self.is_expanding:
             x = self.linear(x)
         y = x + y
         return y
