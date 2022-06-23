@@ -96,7 +96,7 @@ parser.add_argument('--game', type=str, default='ALE/Breakout-v5', help="Games i
 parser.add_argument('--model', type=str, default='DQN', help="Model we use")
 parser.add_argument('--multi_gpu', action='store_true', help='If use multi GPU')
 parser.add_argument('--batch_size', type=int, default=64, help='batch size in training')
-parser.add_argument('--memory_size', type=int, default=128)
+parser.add_argument('--memory_size', type=int, default=256)
 parser.add_argument('--clip_coef', type=float, default=0.1)
 parser.add_argument('--num_envs', type=int, default=4)
 parser.set_defaults(render=False)
@@ -451,7 +451,7 @@ class Agent:
                 pred_value = self.critic.predict([obs, np.zeros((obs.shape[0], 1))])
                 pred_values.append(pred_value)
                 advantage = reward - pred_value
-                advantage = (advantage - np.mean(advantage)) / np.std(advantage)
+                advantage = (advantage - np.mean(advantage)) / (np.std(advantage) + 1e-10)
                 advantages.append(advantage)
             obs = np.concatenate(obses, axis=0)
             action = np.concatenate(actions, axis=0)
