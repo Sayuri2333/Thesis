@@ -458,10 +458,8 @@ class Agent:
             print('Training!!')
             actor_result = self.actor.fit([obs, advantage, old_prediction], [action], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False)
             wandb.log({'actor_loss': np.mean(actor_result.history['loss'])}, step=self.step)
-            wandb.log({'actor_lr':K.eval(self.actor.optimizer.lr)}, step=self.step)
             critic_result = self.critic.fit([obs, pred_values], [reward], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False)
             wandb.log({'critic_loss': np.mean(critic_result.history['loss'])}, step=self.step)
-            wandb.log({'critic_lr':K.eval(self.critic.optimizer.lr)}, step=self.step)
         self.env = test_game
         episode_reward = []
         self.actor.save(self.path + '/model.h5')
