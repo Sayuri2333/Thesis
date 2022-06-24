@@ -274,7 +274,7 @@ class Agent:
         # self.obs = self.env.reset()
         # self.initialization(self.env.reset())
 
-        # self.reward_scal = RewardScaling()
+        self.reward_scal = RewardScaling()
 
     def get_path(self):
         name = 'PPO_Results/' + args.game + '_' + str(args.steps) + '/' + args.model + '/'
@@ -355,9 +355,9 @@ class Agent:
         self.recorder_minp = []
         self.recorder_minaction = []
         # 4. reward scaling
-        # for i in range(len(rewards)):
-        #     rewards[i] = self.reward_scal(rewards[i])
-        # self.reward_scal.reset()
+        for i in range(len(rewards)):
+            rewards[i] = self.reward_scal(rewards[i])
+        self.reward_scal.reset()
         values = []
         for ob in obses:
             values.append(self.critic.predict([ob, np.zeros((1, 1))]))
