@@ -95,7 +95,7 @@ parser.add_argument('--epochs', type=int, default=4, help="epochs on training ba
 parser.add_argument('--game', type=str, default='ALE/Breakout-v5', help="Games in Atari")
 parser.add_argument('--model', type=str, default='DQN', help="Model we use")
 parser.add_argument('--multi_gpu', action='store_true', help='If use multi GPU')
-parser.add_argument('--batch_size', type=int, default=256, help='batch size in training')
+parser.add_argument('--batch_size', type=int, default=64, help='batch size in training')
 parser.add_argument('--memory_size', type=int, default=256)
 parser.add_argument('--clip_coef', type=float, default=0.1)
 parser.add_argument('--num_envs', type=int, default=4)
@@ -269,6 +269,7 @@ class Agent:
         self.batch = [[], [], [], [], []]
         self.env = games
         self.episode = 0
+        self.reward = []
         self.reward_over_time = []
         self.path = self.get_path()
         # self.obs = self.env.reset()
@@ -355,7 +356,7 @@ class Agent:
         self.recorder_minp = []
         self.recorder_minaction = []
         # 4. reward scaling
-        for i in range(len(rewards)):
+        for i in range(len(self.reward)):
             rewards[i] = self.reward_scal(rewards[i])
         self.reward_scal.reset()
         values = []
@@ -422,13 +423,12 @@ class Agent:
         # self.episode += 1
         # self.reset_env()
         # cut old
-        # if len(self.batch[0]) > BUFFER_SIZE:
-        #     del self.batch[0][:-BUFFER_SIZE]
-        #     del self.batch[1][:-BUFFER_SIZE]
-        #     del self.batch[2][:-BUFFER_SIZE]
-        #     del self.batch[3][:-BUFFER_SIZE]
+        if len(self.batch[0]) > BUFFER_SIZE:
+            del self.batch[0][:-BUFFER_SIZE]
+            del self.batch[1][:-BUFFER_SIZE]
+            del self.batch[2][:-BUFFER_SIZE]
+            del self.batch[3][:-BUFFER_SIZE]
         obs, action, pred, reward = np.array(self.batch[0]), np.array(self.batch[1]), np.array(self.batch[2]), np.reshape(np.array(self.batch[3]), (len(self.batch[3]), 1))
-        self.batch = [[], [], [], [], []]
         pred = np.reshape(pred, (pred.shape[0], pred.shape[2]))
         return obs, action, pred, reward
 
