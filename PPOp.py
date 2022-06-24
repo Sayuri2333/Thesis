@@ -435,6 +435,10 @@ class Agent:
     def run(self):
         if not os.path.exists(self.path):
             os.makedirs(self.path)
+        # 初始化batch
+        while len(self.batch[0]) < BUFFER_SIZE:
+            self.get_batch()
+            print('Current batch size: ' + str(len(self.batch[0])))
         while self.step < STEPS:
             # 跑n个episode，记录需要的信息
             obses, actions, preds, rewards, pred_values, advantages = [], [], [], [], [], []
