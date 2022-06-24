@@ -441,38 +441,32 @@ class Agent:
         #     print('Current batch size: ' + str(len(self.batch[0])))
         while self.step < STEPS:
             # 跑n个episode，记录需要的信息
-            obses, actions, preds, rewards, pred_values, advantages = [], [], [], [], [], []
+            obses, actions, preds, rewards = [], [], [], []
             for i in range(args.num_envs):
                 obs, action, pred, reward = self.get_batch(i)
                 obses.append(obs)
                 actions.append(action)
                 preds.append(pred)
                 rewards.append(reward)
-                pred_value = self.critic.predict([obs, np.zeros((obs.shape[0], 1))])
-                pred_values.append(pred_value)
-                advantage = reward - pred_value
-                advantage = (advantage - np.mean(advantage)) / np.std(advantage)
-                advantages.append(advantage)
             obs = np.concatenate(obses, axis=0)
             action = np.concatenate(actions, axis=0)
             pred = np.concatenate(preds, axis=0)
             reward = np.concatenate(rewards, axis=0)
-            pred_value = np.concatenate(pred_values, axis=0)
-            advantage = np.concatenate(advantages, axis=0)
             # 因为要基于这个batch做更新，所以把基于改进前策略的动作概率向量当作old_pred
             old_prediction = pred
             # 使用critic网络预测value值
-            # pred_values = self.critic.predict([obs, np.zeros((obs.shape[0], 1))])
-            wandb.log({"average_critic_score": np.mean(pred_value)}, step=self.step)
+            pred_values = self.critic.predict([obs, np.zeros((obs.shape[0], 1))])
+            wandb.log({"average_critic_score": np.mean(pred_values)}, step=self.step)
             # 实际的v(s)减去预测的v(s)得到adv
+            advantage = reward - pred_values
             # 1. Advantage Normalization
-            # if np.std(advantage) == 0:
-            #     raise KeyboardInterrupt
-            # advantage = (advantage - np.mean(advantage)) / np.std(advantage)
+            if np.std(advantage) == 0:
+                raise KeyboardInterrupt
+            advantage = (advantage - np.mean(advantage)) / np.std(advantage)
             print('Training!!')
             actor_result = self.actor.fit([obs, advantage, old_prediction], [action], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False)
             wandb.log({'actor_loss': np.mean(actor_result.history['loss'])}, step=self.step)
-            critic_result = self.critic.fit([obs, pred_value], [reward], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False)
+            critic_result = self.critic.fit([obs, pred_values], [reward], batch_size=BATCH_SIZE, shuffle=True, epochs=EPOCHS, verbose=False)
             wandb.log({'critic_loss': np.mean(critic_result.history['loss'])}, step=self.step)
         self.env = test_game
         episode_reward = []
