@@ -7,7 +7,7 @@ from tensorflow.keras import activations
 from tensorflow.keras import models
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import Sequential, Model, load_model
-from tensorflow.keras.layers import Multiply, Conv3D, GlobalAveragePooling2D, ConvLSTM2D, Permute, Softmax, AveragePooling2D, MaxPooling2D, Convolution2D, LeakyReLU, add, Reshape, Lambda, Conv2D, LSTMCell, LSTM, Dense, RepeatVector, TimeDistributed, Input, BatchNormalization, multiply, Concatenate, Flatten, Activation, dot, Dot, Dropout
+from tensorflow.keras.layers import concatenate, Multiply, Conv3D, GlobalAveragePooling2D, ConvLSTM2D, Permute, Softmax, AveragePooling2D, MaxPooling2D, Convolution2D, LeakyReLU, add, Reshape, Lambda, Conv2D, LSTMCell, LSTM, Dense, RepeatVector, TimeDistributed, Input, BatchNormalization, multiply, Concatenate, Flatten, Activation, dot, Dot, Dropout
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras import losses
 
