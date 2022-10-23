@@ -24,15 +24,15 @@ gpus = tf.config.experimental.list_physical_devices(device_type='GPU')
 for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
 
-using_gpu_index = 0  # 使用的 GPU 号码
 gpu_list = tf.config.experimental.list_physical_devices('GPU')
 if len(gpu_list) > 0:
     try:
-        tf.config.experimental.set_virtual_device_configuration(
-            gpu_list[using_gpu_index], [
-                tf.config.experimental.VirtualDeviceConfiguration(
-                    memory_limit=8192)
-            ])
+        for i in len(gpu_list):
+            tf.config.experimental.set_virtual_device_configuration(
+                gpu_list[i], [
+                    tf.config.experimental.VirtualDeviceConfiguration(
+                        memory_limit=8192)
+                ])
     except RuntimeError as e:
         print(e)
 else:
@@ -47,9 +47,6 @@ parser.add_argument('--game',
                     default='ALE/Breakout-v5',
                     help="Games in Atari")
 parser.add_argument('--model', type=str, default='DQN', help="Model we use")
-parser.add_argument('--multi_gpu',
-                    action='store_true',
-                    help='If use multi GPU')
 parser.set_defaults(render=False)
 
 args = parser.parse_args()
