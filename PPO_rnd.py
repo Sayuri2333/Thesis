@@ -291,23 +291,6 @@ class Agent():
                  policy_kl_range, policy_params, value_clip, entropy_coef,
                  vf_loss_coef, minibatch, PPO_epochs, gamma, lam,
                  learning_rate, n_episode):
-        self.runs = wandb.init(
-            project=args.game.split('/')[-1] + '_PPO_' +
-            str(n_episode) if '/' in args.game else args.game + '_PPO_' +
-            str(n_episode),
-            name=args.model + '_PPO',
-            config={
-                'learning_rate': learning_rate,
-                'num_actions': action_dim,
-                'gamma': gamma,
-                'total_episodes': n_episode,
-                'Num_stacking': 8,
-                'num_batches': 1,
-                'epoches': 4
-            },
-            save_code=True,
-            monitor_gym=True)
-        config = wandb.config
         self.policy_kl_range = policy_kl_range
         self.policy_params = policy_params
         self.value_clip = value_clip
@@ -342,7 +325,7 @@ class Agent():
 
         self.policy_function = PolicyFunction(gamma, lam)
         self.distributions = Distributions()
-
+        self.update_times = 0
         self.ex_advantages_coef = 2
         self.in_advantages_coef = 1
         self.clip_normalization = 5
@@ -467,8 +450,8 @@ class Agent():
         state = tf.expand_dims(tf.cast(state, dtype=tf.float32), 0)
         action_probs = self.actor(state)
         critic = self.ex_critic(state)
-        wandb.log({'max_p': tf.math.reduce_max(action_probs).numpy()})
-        wandb.log({'min_p': tf.math.reduce_min(action_probs).numpy()})
+        wandb.log({'max_p': tf.math.reduce_max(action_probs).numpy()}, commit=False)
+        wandb.log({'min_p': tf.math.reduce_min(action_probs).numpy()}, commit=False)
         wandb.log({'value': critic.numpy()})
         # We don't need sample the action in Test Mode
         # only sampling the action in Training Mode in order to exploring the actions
@@ -527,7 +510,7 @@ class Agent():
                                      rewards, dones, state_preds,
                                      state_targets, in_values, old_in_values,
                                      next_in_values, std_in_rewards)
-        wandb.log({"loss": loss.numpy()})
+        wandb.log({"loss": loss.numpy()}, commit=False)
         gradients = tape.gradient(
             loss, self.actor.trainable_variables +
             self.ex_critic.trainable_variables +
@@ -650,7 +633,7 @@ def run_episode(env, agent, state_dim, render, training_mode, t_updates,
     done = False
     total_reward = 0
     eps_time = 0
-    ############################################
+    ############################################total_reward
 
     while not done:
         action = int(agent.act(state))
@@ -689,7 +672,6 @@ def main():
     render = False  # If you want to display the image, set this to True. Turn this off if you run this in Google Collab
     n_step_update = 32  # How many steps before you update the RND. Recommended set to 128 for Discrete
     n_eps_update = 5  # How many episode before you update the PPO. Recommended set to 5 for Discrete
-    n_plot_batch = 100000000  # How many episode you want to plot the result
     n_episode = 100000  # How many episode you want to run
     n_init_episode = 256
     n_saved = 10  # How many episode to run before saving the weights
@@ -705,20 +687,33 @@ def main():
     gamma = 0.99  # Just set to 0.99
     lam = 0.95  # Just set to 0.95
     learning_rate = 2.5e-4
-    #############################################
     env_name = 'ALE/Breakout-v5'  # Set the env you want
     env = make_env(env_name)
 
     state_dim = list(env.observation_space.shape)
     action_dim = env.action_space.n
-
+    ##############################################
+    runs = wandb.init(
+        project=args.game.split('/')[-1] + '_PPO_' +
+        str(n_episode) if '/' in args.game else args.game + '_PPO_' +
+        str(n_episode),
+        name=args.model + '_PPO',
+        config={
+            'learning_rate': learning_rate,
+            'num_actions': action_dim,
+            'gamma': gamma,
+            'total_episodes': n_episode,
+            'Num_stacking': 8,
+            'num_batches': 1,
+            'epoches': 4
+        },
+        save_code=True,
+        monitor_gym=True)
+    config = wandb.config
     agent = Agent(state_dim, action_dim, training_mode, policy_kl_range,
                   policy_params, value_clip, entropy_coef, vf_loss_coef,
                   minibatch, PPO_epochs, gamma, lam, learning_rate, n_episode)
     #############################################
-    # if using_google_drive:
-    #     from google.colab import drive
-    #     drive.mount('/test')
 
     if load_weights:
         agent.load_weights()
@@ -747,7 +742,6 @@ def main():
                                                     t_updates, n_step_update)
         print('Episode {} \t t_reward: {} \t time: {} \t '.format(
             i_episode, total_reward, time))
-        wandb.log({"episode_reward": total_reward}, step=i_episode)
 
         batch_rewards.append(int(total_reward))
         batch_times.append(time)
@@ -759,6 +753,8 @@ def main():
             if i_episode % n_saved == 0:
                 agent.save_weights()
                 print('weights saved')
+
+        wandb.log({"rewards": int(total_reward)}, commit=False)
 
         if reward_threshold:
             if len(batch_solved_reward) == 100:
