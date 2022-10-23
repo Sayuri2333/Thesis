@@ -9,7 +9,6 @@ from tensorflow.keras.layers import MaxPooling3D, Conv3D, GlobalAveragePooling2D
 from tensorflow.keras import Model
 from tensorflow.keras.utils import to_categorical
 
-import matplotlib.pyplot as plt
 import numpy as np
 import sys
 import numpy
@@ -639,18 +638,6 @@ class Agent():
         self.in_critic_old.load_weights('bipedalwalker_w/in_critic_old_ppo')
 
 
-def plot(datas):
-    print('----------')
-
-    plt.plot(datas)
-    plt.plot()
-    plt.xlabel('Episode')
-    plt.ylabel('Datas')
-    plt.show()
-
-    print('Max :', np.max(datas))
-    print('Min :', np.min(datas))
-    print('Avg :', np.mean(datas))
 
 
 def run_inits_episode(env, agent, state_dim, render, n_init_episode):
