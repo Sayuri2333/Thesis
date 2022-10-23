@@ -38,6 +38,8 @@ if len(gpu_list) > 0:
 else:
     print("Got no GPUs")
 
+strategy = tf.distribute.MirroredStrategy()
+
 parser = argparse.ArgumentParser(description='Training parameters')
 
 parser.add_argument('--game',
@@ -319,7 +321,7 @@ class Agent():
         self.RND_epochs = 5
         self.is_training_mode = is_training_mode
         self.action_dim = action_dim
-        if not args.multi_gpu:
+        with strategy.scope():
             self.actor = Actor_Model(state_dim, action_dim)
             self.actor_old = Actor_Model(state_dim, action_dim)
 
@@ -331,26 +333,6 @@ class Agent():
 
             self.rnd_predict = RND_Model(state_dim, action_dim)
             self.rnd_target = RND_Model(state_dim, action_dim)
-
-        else:
-            self.actor = multi_gpu_model(Actor_Model(state_dim, action_dim), 2)
-            self.actor_old = multi_gpu_model(
-                Actor_Model(state_dim, action_dim), 2)
-
-            self.ex_critic = multi_gpu_model(
-                Critic_Model(state_dim, action_dim), 2)
-            self.ex_critic_old = multi_gpu_model(
-                Critic_Model(state_dim, action_dim), 2)
-
-            self.in_critic = multi_gpu_model(
-                Critic_Model(state_dim, action_dim), 2)
-            self.in_critic_old = multi_gpu_model(
-                Critic_Model(state_dim, action_dim), 2)
-
-            self.rnd_predict = multi_gpu_model(
-                RND_Model(state_dim, action_dim), 2)
-            self.rnd_target = multi_gpu_model(RND_Model(state_dim, action_dim),
-                                              2)
 
         self.ppo_optimizer = tf.keras.optimizers.Adam(
             learning_rate=learning_rate)
@@ -725,7 +707,7 @@ def main():
 
     gamma = 0.99  # Just set to 0.99
     lam = 0.95  # Just set to 0.95
-    learning_rate = 2.5e-4  # Just set to 0.95
+    learning_rate = 2.5e-4
     #############################################
     env_name = 'ALE/Breakout-v5'  # Set the env you want
     env = make_env(env_name)
