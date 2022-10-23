@@ -27,7 +27,7 @@ for gpu in gpus:
 gpu_list = tf.config.experimental.list_physical_devices('GPU')
 if len(gpu_list) > 0:
     try:
-        for i in len(gpu_list):
+        for i in range(len(gpu_list)):
             tf.config.experimental.set_virtual_device_configuration(
                 gpu_list[i], [
                     tf.config.experimental.VirtualDeviceConfiguration(
