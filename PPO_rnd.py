@@ -94,22 +94,17 @@ class Actor_Model(Model):
     def __init__(self, state_dim, action_dim):
         super(Actor_Model, self).__init__()
         self.backbone = backbone
-        self.inputs = self.backbone.inputs
         self.actor_dense = Dense(
             256,
             kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
             activation='relu')
-        self.outputs = [
-            Dense(action_dim,
-                  activation='softmax',
-                  name='output',
-                  kernel_initializer=initializer)
-        ]
+        self.outputs = Dense(action_dim,activation='softmax',name='output',kernel_initializer=initializer)
+
 
     def call(self, x):
         x = self.backbone(x)
         x = self.actor_dense(x)
-        x = self.outputs[0](x)
+        x = self.outputs(x)
         return x
 
 
@@ -117,26 +112,22 @@ class Critic_Model(Model):
     def __init__(self, state_dim, action_dim):
         super(Critic_Model, self).__init__()
         self.backbone = backbone
-        self.inputs = self.backbone.inputs
         self.critic_dense = Dense(
             256,
             kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
             activation='relu')
-        self.outputs = [
-            Dense(1, kernel_initializer=initializer, activation='relu')
-        ]
+        self.outputs = Dense(1, kernel_initializer=initializer, activation='relu')
 
     def call(self, x):
         x = self.backbone(x)
         x = self.critic_dense(x)
-        x = self.outputs[0](x)
+        x = self.outputs(x)
         return x
 
 
 class RND_Model(Model):
     def __init__(self, state_dim, action_dim):
         super(RND_Model, self).__init__()
-        self.inputs = [Input(shape=(8, 80, 80, 1))]
         self.last_frame = Lambda(lambda x: x[:, -1, :, :, :])
         self.conv1 = Conv2D(32,
                             8, (4, 4),
@@ -154,16 +145,15 @@ class RND_Model(Model):
                             padding='same',
                             kernel_initializer=initializer)
         self.flat = Flatten()
-        self.outputs = [Dense(5, activation='linear')]
+        self.outputs = Dense(5, activation='linear')
 
     def call(self, x):
-        x = self.inputs[0](x)
         x = self.last_frame(x)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
         x = self.flat(x)
-        x = self.outputs[0](x)
+        x = self.outputs(x)
         return x
 
 
