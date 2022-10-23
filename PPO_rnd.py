@@ -14,7 +14,7 @@ import sys
 import numpy
 
 from model_ppo_tf2 import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFCA, MultiscaleTransformer, OnlyMultiscale, RNDmodel
-from utils_tf2 import RewardScaling
+from utils_tf2 import RewardScaling, multi_gpu_model
 from Atari_Warppers import NoopResetEnv, NormalizedEnv, ResizeObservation, SyncVectorEnv, ClipRewardEnv, EpisodicLifeEnv, FireResetEnv
 import wandb
 from wandb.keras import WandbCallback
@@ -352,18 +352,31 @@ class Agent():
         self.RND_epochs = 5
         self.is_training_mode = is_training_mode
         self.action_dim = action_dim
+        if not args.multi_gpu:
+            self.actor = Actor_Model(state_dim, action_dim)
+            self.actor_old = Actor_Model(state_dim, action_dim)
 
-        self.actor = Actor_Model(state_dim, action_dim)
-        self.actor_old = Actor_Model(state_dim, action_dim)
+            self.ex_critic = Critic_Model(state_dim, action_dim)
+            self.ex_critic_old = Critic_Model(state_dim, action_dim)
 
-        self.ex_critic = Critic_Model(state_dim, action_dim)
-        self.ex_critic_old = Critic_Model(state_dim, action_dim)
+            self.in_critic = Critic_Model(state_dim, action_dim)
+            self.in_critic_old = Critic_Model(state_dim, action_dim)
 
-        self.in_critic = Critic_Model(state_dim, action_dim)
-        self.in_critic_old = Critic_Model(state_dim, action_dim)
+            self.rnd_predict = RND_Model(state_dim, action_dim)
+            self.rnd_target = RND_Model(state_dim, action_dim)
+        
+        else:
+            self.actor = multi_gpu_model(Actor_Model(state_dim, action_dim), 2)
+            self.actor_old = multi_gpu_model(Actor_Model(state_dim, action_dim), 2)
 
-        self.rnd_predict = RND_Model(state_dim, action_dim)
-        self.rnd_target = RND_Model(state_dim, action_dim)
+            self.ex_critic = multi_gpu_model(Critic_Model(state_dim, action_dim), 2)
+            self.ex_critic_old = multi_gpu_model(Critic_Model(state_dim, action_dim), 2)
+
+            self.in_critic = multi_gpu_model(Critic_Model(state_dim, action_dim), 2)
+            self.in_critic_old = multi_gpu_model(Critic_Model(state_dim, action_dim), 2)
+
+            self.rnd_predict = multi_gpu_model(RND_Model(state_dim, action_dim), 2)
+            self.rnd_target = multi_gpu_model(RND_Model(state_dim, action_dim), 2)
 
         self.ppo_optimizer = tf.keras.optimizers.Adam(
             learning_rate=learning_rate)
