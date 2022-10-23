@@ -19,7 +19,11 @@ from Atari_Warppers import NoopResetEnv, NormalizedEnv, ResizeObservation, SyncV
 import wandb
 from wandb.keras import WandbCallback
 
-sess = tf.compat.v1.Session()
+gpus = tf.config.experimental.list_physical_devices(device_type='GPU')
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
+
+strategy = tf.distribute.MirroredStrategy()
 
 parser = argparse.ArgumentParser(description='Training parameters')
 
