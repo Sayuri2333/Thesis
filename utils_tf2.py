@@ -1266,6 +1266,6 @@ def multi_gpu_model(model, gpus):
     # Merge outputs on CPU.
     with tf.device('/cpu:0'):
         merged = []
-        for name, outputs in zip(model.output_names, all_outputs):
-            merged.append(concatenate(outputs, axis=0, name=name))
+        for outputs in all_outputs:
+            merged.append(concatenate(outputs, axis=0))
         return Model(model.inputs, merged)
