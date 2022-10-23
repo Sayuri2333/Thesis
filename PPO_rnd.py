@@ -23,7 +23,18 @@ gpus = tf.config.experimental.list_physical_devices(device_type='GPU')
 for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
 
-strategy = tf.distribute.MirroredStrategy()
+using_gpu_index = 0 # 使用的 GPU 号码
+gpu_list = tf.config.experimental.list_physical_devices('GPU')
+if len(gpu_list) > 0:
+  try:
+    tf.config.experimental.set_virtual_device_configuration(
+        gpu_list[using_gpu_index], 
+        [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=8192)]
+    )
+  except RuntimeError as e:
+    print(e)
+else:
+	print("Got no GPUs")
 
 parser = argparse.ArgumentParser(description='Training parameters')
 
