@@ -1,7 +1,6 @@
 import random
 import numpy as np
 from numpy.core.fromnumeric import squeeze
-from psutil import AIX
 import tensorflow.compat.v1 as tf
 tf.disable_eager_execution()
 tf.disable_v2_behavior()
