@@ -3,6 +3,7 @@ import argparse
 from gym.envs.registration import register
 
 import tensorflow as tf
+
 print(tf.executing_eagerly())
 import tensorflow_probability as tfp
 from tensorflow.keras.layers import MaxPooling3D, Conv3D, GlobalAveragePooling2D, concatenate, add, Multiply, Permute, Softmax, AveragePooling2D, MaxPooling2D, Convolution2D, LeakyReLU, Reshape, Lambda, Conv2D, LSTMCell, LSTM, Dense, RepeatVector, TimeDistributed, Input, BatchNormalization, multiply, Concatenate, Flatten, Activation, dot, Dot, Dropout
@@ -23,18 +24,19 @@ gpus = tf.config.experimental.list_physical_devices(device_type='GPU')
 for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
 
-using_gpu_index = 0 # 使用的 GPU 号码
+using_gpu_index = 0  # 使用的 GPU 号码
 gpu_list = tf.config.experimental.list_physical_devices('GPU')
 if len(gpu_list) > 0:
-  try:
-    tf.config.experimental.set_virtual_device_configuration(
-        gpu_list[using_gpu_index], 
-        [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=8192)]
-    )
-  except RuntimeError as e:
-    print(e)
+    try:
+        tf.config.experimental.set_virtual_device_configuration(
+            gpu_list[using_gpu_index], [
+                tf.config.experimental.VirtualDeviceConfiguration(
+                    memory_limit=8192)
+            ])
+    except RuntimeError as e:
+        print(e)
 else:
-	print("Got no GPUs")
+    print("Got no GPUs")
 
 parser = argparse.ArgumentParser(description='Training parameters')
 
@@ -87,6 +89,7 @@ class Utils():
 backbone = eval(args.model)()
 initializer = tf.keras.initializers.Orthogonal(gain=0.1)
 
+
 class Actor_Model(Model):
     def __init__(self, state_dim, action_dim):
         super(Actor_Model, self).__init__()
@@ -96,10 +99,12 @@ class Actor_Model(Model):
             256,
             kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
             activation='relu')
-        self.outputs = [Dense(action_dim,
-                                 activation='softmax',
-                                 name='output',
-                                 kernel_initializer=initializer)]
+        self.outputs = [
+            Dense(action_dim,
+                  activation='softmax',
+                  name='output',
+                  kernel_initializer=initializer)
+        ]
 
     def call(self, x):
         x = self.backbone(x)
@@ -117,9 +122,9 @@ class Critic_Model(Model):
             256,
             kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
             activation='relu')
-        self.outputs = [Dense(1, kernel_initializer=initializer,
-                          activation='relu')]
-
+        self.outputs = [
+            Dense(1, kernel_initializer=initializer, activation='relu')
+        ]
 
     def call(self, x):
         x = self.backbone(x)
@@ -131,11 +136,23 @@ class Critic_Model(Model):
 class RND_Model(Model):
     def __init__(self, state_dim, action_dim):
         super(RND_Model, self).__init__()
-        self.inputs = [Input(shape=(8,80,80,1))]
+        self.inputs = [Input(shape=(8, 80, 80, 1))]
         self.last_frame = Lambda(lambda x: x[:, -1, :, :, :])
-        self.conv1 = Conv2D(32, 8, (4,4), activation='relu', padding='same', kernel_initializer=initializer)
-        self.conv2 = Conv2D(64, 4, (2,2), activation='relu', padding='same', kernel_initializer=initializer)
-        self.conv3 = Conv2D(64, 3, (1,1), activation='relu', padding='same', kernel_initializer=initializer)
+        self.conv1 = Conv2D(32,
+                            8, (4, 4),
+                            activation='relu',
+                            padding='same',
+                            kernel_initializer=initializer)
+        self.conv2 = Conv2D(64,
+                            4, (2, 2),
+                            activation='relu',
+                            padding='same',
+                            kernel_initializer=initializer)
+        self.conv3 = Conv2D(64,
+                            3, (1, 1),
+                            activation='relu',
+                            padding='same',
+                            kernel_initializer=initializer)
         self.flat = Flatten()
         self.outputs = [Dense(5, activation='linear')]
 
@@ -285,21 +302,22 @@ class Agent():
                  policy_kl_range, policy_params, value_clip, entropy_coef,
                  vf_loss_coef, minibatch, PPO_epochs, gamma, lam,
                  learning_rate, n_episode):
-        self.runs = wandb.init(project=args.game.split('/')[-1] + '_PPO_' +
-                               str(n_episode) if '/' in args.game else args.game +
-                               '_PPO_' + str(n_episode),
-                               name=args.model + '_PPO',
-                               config={
-                                   'learning_rate': learning_rate,
-                                   'num_actions': action_dim,
-                                   'gamma': gamma,
-                                   'total_episodes': n_episode,
-                                   'Num_stacking': 8,
-                                   'num_batches': 1,
-                                   'epoches': 4
-                               },
-                               save_code=True,
-                               monitor_gym=True)
+        self.runs = wandb.init(
+            project=args.game.split('/')[-1] + '_PPO_' +
+            str(n_episode) if '/' in args.game else args.game + '_PPO_' +
+            str(n_episode),
+            name=args.model + '_PPO',
+            config={
+                'learning_rate': learning_rate,
+                'num_actions': action_dim,
+                'gamma': gamma,
+                'total_episodes': n_episode,
+                'Num_stacking': 8,
+                'num_batches': 1,
+                'epoches': 4
+            },
+            save_code=True,
+            monitor_gym=True)
         config = wandb.config
         self.policy_kl_range = policy_kl_range
         self.policy_params = policy_params
@@ -323,19 +341,26 @@ class Agent():
 
             self.rnd_predict = RND_Model(state_dim, action_dim)
             self.rnd_target = RND_Model(state_dim, action_dim)
-        
+
         else:
             self.actor = multi_gpu_model(Actor_Model(state_dim, action_dim), 2)
-            self.actor_old = multi_gpu_model(Actor_Model(state_dim, action_dim), 2)
+            self.actor_old = multi_gpu_model(
+                Actor_Model(state_dim, action_dim), 2)
 
-            self.ex_critic = multi_gpu_model(Critic_Model(state_dim, action_dim), 2)
-            self.ex_critic_old = multi_gpu_model(Critic_Model(state_dim, action_dim), 2)
+            self.ex_critic = multi_gpu_model(
+                Critic_Model(state_dim, action_dim), 2)
+            self.ex_critic_old = multi_gpu_model(
+                Critic_Model(state_dim, action_dim), 2)
 
-            self.in_critic = multi_gpu_model(Critic_Model(state_dim, action_dim), 2)
-            self.in_critic_old = multi_gpu_model(Critic_Model(state_dim, action_dim), 2)
+            self.in_critic = multi_gpu_model(
+                Critic_Model(state_dim, action_dim), 2)
+            self.in_critic_old = multi_gpu_model(
+                Critic_Model(state_dim, action_dim), 2)
 
-            self.rnd_predict = multi_gpu_model(RND_Model(state_dim, action_dim), 2)
-            self.rnd_target = multi_gpu_model(RND_Model(state_dim, action_dim), 2)
+            self.rnd_predict = multi_gpu_model(
+                RND_Model(state_dim, action_dim), 2)
+            self.rnd_target = multi_gpu_model(RND_Model(state_dim, action_dim),
+                                              2)
 
         self.ppo_optimizer = tf.keras.optimizers.Adam(
             learning_rate=learning_rate)
@@ -438,7 +463,9 @@ class Agent():
         # pg_loss = tf.where(
         #     tf.logical_and(Kl >= self.policy_kl_range, ratios > 1),
         #     ratios * Advantages - self.policy_params * Kl, ratios * Advantages)
-        pg_loss = tf.minimum(ratios * Advantages, tf.clip_by_value(ratios, 1-0.2, 1+0.2) * Advantages)
+        pg_loss = tf.minimum(
+            ratios * Advantages,
+            tf.clip_by_value(ratios, 1 - 0.2, 1 + 0.2) * Advantages)
         pg_loss = tf.math.reduce_mean(pg_loss)
         # Getting entropy from the action probability
         dist_entropy = tf.math.reduce_mean(
@@ -610,8 +637,6 @@ class Agent():
         self.in_critic_old.load_weights('bipedalwalker_w/in_critic_old_ppo')
 
 
-
-
 def run_inits_episode(env, agent, state_dim, render, n_init_episode):
     ############################################
     env.reset()
@@ -632,6 +657,7 @@ def run_inits_episode(env, agent, state_dim, render, n_init_episode):
 
     return agent
 
+
 def make_env(gym_id):
     env = gym.make(gym_id)
     env = gym.wrappers.RecordEpisodeStatistics(env)
@@ -646,6 +672,7 @@ def make_env(gym_id):
     env = NormalizedEnv(env, ob=True, ret=False)
     env = gym.wrappers.FrameStack(env, 8)
     return env
+
 
 def run_episode(env, agent, state_dim, render, training_mode, t_updates,
                 n_update):
@@ -665,8 +692,8 @@ def run_episode(env, agent, state_dim, render, training_mode, t_updates,
         total_reward += reward
 
         if training_mode:
-            agent.save_eps(state, float(action), float(reward),
-                           float(done), next_state)
+            agent.save_eps(state, float(action), float(reward), float(done),
+                           next_state)
             agent.save_observation(next_state)
 
         state = next_state
