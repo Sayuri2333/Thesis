@@ -84,7 +84,7 @@ class Actor_Model(Model):
             256,
             kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
             activation='relu')
-        self.out_actions = Dense(action_dim,
+        self.outputs = Dense(action_dim,
                                  activation='softmax',
                                  name='output',
                                  kernel_initializer=initializer)
@@ -92,7 +92,7 @@ class Actor_Model(Model):
     def call(self, x):
         x = self.backbone(x)
         x = self.actor_dense(x)
-        x = self.out_actions(x)
+        x = self.outputs(x)
         return x
 
 
@@ -104,14 +104,14 @@ class Critic_Model(Model):
             256,
             kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
             activation='relu')
-        self.out_value = Dense(1, kernel_initializer=initializer,
+        self.outputs = Dense(1, kernel_initializer=initializer,
                           activation='relu')
 
 
     def call(self, x):
         x = self.backbone(x)
         x = self.critic_dense(x)
-        x = self.out_value(x)
+        x = self.outputs(x)
         return x
 
 
@@ -123,7 +123,7 @@ class RND_Model(Model):
         self.conv2 = Conv2D(64, 4, (2,2), activation='relu', padding='same', kernel_initializer=initializer)
         self.conv3 = Conv2D(64, 3, (1,1), activation='relu', padding='same', kernel_initializer=initializer)
         self.flat = Flatten()
-        self.out = Dense(5, activation='linear')
+        self.outputs = Dense(5, activation='linear')
 
     def call(self, x):
         x = self.last_frame(x)
@@ -131,7 +131,7 @@ class RND_Model(Model):
         x = self.conv2(x)
         x = self.conv3(x)
         x = self.flat(x)
-        x = self.out(x)
+        x = self.outputs(x)
         return x
 
 
