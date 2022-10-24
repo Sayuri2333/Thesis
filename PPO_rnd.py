@@ -9,13 +9,12 @@ import tensorflow_probability as tfp
 from tensorflow.keras.layers import MaxPooling3D, Conv3D, GlobalAveragePooling2D, concatenate, add, Multiply, Permute, Softmax, AveragePooling2D, MaxPooling2D, Convolution2D, LeakyReLU, Reshape, Lambda, Conv2D, LSTMCell, LSTM, Dense, RepeatVector, TimeDistributed, Input, BatchNormalization, multiply, Concatenate, Flatten, Activation, dot, Dot, Dropout
 from tensorflow.keras import Model
 from tensorflow.keras.utils import to_categorical
-
+from gym.wrappers.time_limit import TimeLimit
 import numpy as np
 import sys
 import numpy
 
 from model_ppo_tf2 import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFCA, MultiscaleTransformer, OnlyMultiscale, RNDmodel
-from utils_tf2 import RewardScaling, multi_gpu_model
 from Atari_Warppers import NoopResetEnv, NormalizedEnv, ResizeObservation, SyncVectorEnv, ClipRewardEnv, EpisodicLifeEnv, FireResetEnv
 import wandb
 from wandb.keras import WandbCallback
@@ -36,9 +35,9 @@ if len(gpu_list) > 0:
     except RuntimeError as e:
         print(e)
 else:
-    print("Got no GPUs")
+    print("NO GPUs")
 
-strategy = tf.distribute.MirroredStrategy()
+strategy = tf.distribute.MirroredStrategy() #?
 
 parser = argparse.ArgumentParser(description='Training parameters')
 
@@ -53,15 +52,6 @@ args = parser.parse_args()
 
 
 class Utils():
-    def prepro(self, I):
-        I = I[35:195]  # crop
-        I = I[::2, ::2, 0]  # downsample by factor of 2
-        I[I == 144] = 0  # erase background (background type 1)
-        I[I == 109] = 0  # erase background (background type 2)
-        I[I != 0] = 1  # everything else (paddles, ball) just set to 1
-        X = I.astype(np.float32).ravel()  # Combine items in 1 array
-        return X
-
     def count_new_mean(self, prevMean, prevLen, newData):
         return ((prevMean * prevLen) +
                 tf.math.reduce_sum(newData, 0)) / (prevLen + newData.shape[0])
@@ -288,11 +278,9 @@ class PolicyFunction():
 
 class Agent():
     def __init__(self, state_dim, action_dim, is_training_mode,
-                 policy_kl_range, policy_params, value_clip, entropy_coef,
+                 value_clip, entropy_coef,
                  vf_loss_coef, minibatch, PPO_epochs, gamma, lam,
                  learning_rate, n_episode):
-        self.policy_kl_range = policy_kl_range
-        self.policy_params = policy_params
         self.value_clip = value_clip
         self.entropy_coef = entropy_coef
         self.vf_loss_coef = vf_loss_coef
@@ -613,6 +601,7 @@ def run_inits_episode(env, agent, state_dim, render, n_init_episode):
 def make_env(gym_id):
     env = gym.make(gym_id)
     env = gym.wrappers.RecordEpisodeStatistics(env)
+    env = TimeLimit(env, max_episode_steps=2000)
     env = NoopResetEnv(env, noop_max=30)
     # env = MaxAndSkipEnv(env, skip=4)
     env = EpisodicLifeEnv(env)
@@ -663,31 +652,28 @@ def run_episode(env, agent, state_dim, render, training_mode, t_updates,
 
 
 def main():
-    ############## Hyperparameters ##############
-    load_weights = False  # If you want to load the agent, set this to True
-    save_weights = False  # If you want to save the agent, set this to True
-    training_mode = True  # If you want to train the agent, set this to True. But set this otherwise if you only want to test it
-    reward_threshold = 300  # Set threshold for reward. The learning will stop if reward has pass threshold. Set none to sei this off
+    #########################################
+    load_weights = False
+    save_weights = False
+    training_mode = True
 
-    render = False  # If you want to display the image, set this to True. Turn this off if you run this in Google Collab
-    n_step_update = 32  # How many steps before you update the RND. Recommended set to 128 for Discrete
-    n_eps_update = 5  # How many episode before you update the PPO. Recommended set to 5 for Discrete
-    n_episode = 100000  # How many episode you want to run
+    render = False
+    n_step_update = 128  # steps before you update the RND
+    n_eps_update = 5  # episode before you update the PPO
+    n_episode = 100000  # episode you want to run
     n_init_episode = 256
-    n_saved = 10  # How many episode to run before saving the weights
+    n_saved = 10  # episode to run before saving the weights
 
-    policy_kl_range = 0.0008  # Recommended set to 0.0008 for Discrete
-    policy_params = 20  # Recommended set to 20 for Discrete
-    value_clip = 1.0  # How many value will be clipped. Recommended set to the highest or lowest possible reward
-    entropy_coef = 0.05  # How much randomness of action you will get
-    vf_loss_coef = 1.0  # Just set to 1
-    minibatch = 1  # How many batch per update. size of batch = n_update / minibatch. Recommended set to 4 for Discrete
-    PPO_epochs = 4  # How many epoch per update. Recommended set to 10 for Discrete
+    value_clip = 1.0  # Value clipping
+    entropy_coef = 0.05  # entropy loss ratio
+    vf_loss_coef = 1.0  # critic loss ratio
+    minibatch = 1  # size of batch = n_update / minibatch
+    PPO_epochs = 4  # epochs for an update
 
-    gamma = 0.99  # Just set to 0.99
-    lam = 0.95  # Just set to 0.95
+    gamma = 0.99
+    lam = 0.95
     learning_rate = 2.5e-4
-    env_name = 'ALE/Breakout-v5'  # Set the env you want
+    env_name = 'ALE/Breakout-v5'
     env = make_env(env_name)
 
     state_dim = list(env.observation_space.shape)
@@ -710,21 +696,14 @@ def main():
         save_code=True,
         monitor_gym=True)
     config = wandb.config
-    agent = Agent(state_dim, action_dim, training_mode, policy_kl_range,
-                  policy_params, value_clip, entropy_coef, vf_loss_coef,
+    agent = Agent(state_dim, action_dim, training_mode,
+                  value_clip, entropy_coef, vf_loss_coef,
                   minibatch, PPO_epochs, gamma, lam, learning_rate, n_episode)
     #############################################
 
     if load_weights:
         agent.load_weights()
         print('Weight Loaded')
-
-    rewards = []
-    batch_rewards = []
-    batch_solved_reward = []
-
-    times = []
-    batch_times = []
 
     t_updates = 0
 
@@ -743,9 +722,6 @@ def main():
         print('Episode {} \t t_reward: {} \t time: {} \t '.format(
             i_episode, total_reward, time))
 
-        batch_rewards.append(int(total_reward))
-        batch_times.append(time)
-
         if i_episode % n_eps_update == 0:
             agent.update_ppo()
 
@@ -755,29 +731,6 @@ def main():
                 print('weights saved')
 
         wandb.log({"rewards": int(total_reward)}, commit=False)
-
-        if reward_threshold:
-            if len(batch_solved_reward) == 100:
-                if np.mean(batch_solved_reward) >= reward_threshold:
-                    print('You solved task after {} episode'.format(
-                        len(rewards)))
-                    break
-
-                else:
-                    del batch_solved_reward[0]
-                    batch_solved_reward.append(total_reward)
-
-            else:
-                batch_solved_reward.append(total_reward)
-
-    print('========== Final ==========')
-    # Plot the reward, times for every episode
-
-    for reward in batch_rewards:
-        rewards.append(reward)
-
-    for time in batch_times:
-        times.append(time)
 
 
 if __name__ == '__main__':
