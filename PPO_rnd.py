@@ -1,6 +1,5 @@
 import gym
 import argparse
-from gym.envs.registration import register
 
 import tensorflow as tf
 
@@ -19,10 +18,13 @@ from Atari_Warppers import NoopResetEnv, NormalizedEnv, ResizeObservation, SyncV
 import wandb
 from wandb.keras import WandbCallback
 
+
+# 设置显存按需获取
 gpus = tf.config.experimental.list_physical_devices(device_type='GPU')
 for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
 
+# 设置每个GPU可访问显存的量的上限
 gpu_list = tf.config.experimental.list_physical_devices('GPU')
 if len(gpu_list) > 0:
     try:
@@ -37,8 +39,11 @@ if len(gpu_list) > 0:
 else:
     print("NO GPUs")
 
-strategy = tf.distribute.MirroredStrategy() #?
 
+
+# strategy = tf.distribute.MirroredStrategy()
+
+# 
 parser = argparse.ArgumentParser(description='Training parameters')
 
 parser.add_argument('--game',
@@ -289,18 +294,17 @@ class Agent():
         self.RND_epochs = 5
         self.is_training_mode = is_training_mode
         self.action_dim = action_dim
-        with strategy.scope():
-            self.actor = Actor_Model(state_dim, action_dim)
-            self.actor_old = Actor_Model(state_dim, action_dim)
+        self.actor = Actor_Model(state_dim, action_dim)
+        self.actor_old = Actor_Model(state_dim, action_dim)
 
-            self.ex_critic = Critic_Model(state_dim, action_dim)
-            self.ex_critic_old = Critic_Model(state_dim, action_dim)
+        self.ex_critic = Critic_Model(state_dim, action_dim)
+        self.ex_critic_old = Critic_Model(state_dim, action_dim)
 
-            self.in_critic = Critic_Model(state_dim, action_dim)
-            self.in_critic_old = Critic_Model(state_dim, action_dim)
+        self.in_critic = Critic_Model(state_dim, action_dim)
+        self.in_critic_old = Critic_Model(state_dim, action_dim)
 
-            self.rnd_predict = RND_Model(state_dim, action_dim)
-            self.rnd_target = RND_Model(state_dim, action_dim)
+        self.rnd_predict = RND_Model(state_dim, action_dim)
+        self.rnd_target = RND_Model(state_dim, action_dim)
 
         self.ppo_optimizer = tf.keras.optimizers.Adam(
             learning_rate=learning_rate)
