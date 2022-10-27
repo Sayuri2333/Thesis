@@ -307,9 +307,9 @@ class Agent():
         self.rnd_target = RND_Model(state_dim, action_dim)
 
         self.ppo_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=learning_rate)
+            learning_rate=learning_rate, epsilon=1e-05, clipnorm=0.5)
         self.rnd_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=learning_rate)
+            learning_rate=learning_rate, epsilon=1e-05, clipnorm=0.5)
 
         self.memory = Memory()
         self.obs_memory = ObsMemory(state_dim)
