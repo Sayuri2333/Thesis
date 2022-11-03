@@ -305,9 +305,10 @@ class Agent():
 
         self.rnd_predict = RND_Model(state_dim, action_dim)
         self.rnd_target = RND_Model(state_dim, action_dim)
-
+        learning_rate_fn = tf.keras.optimizers.schedules.PolynomialDecay(
+            learning_rate, 10000, 0.1 * learning_rate, power=1)
         self.ppo_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=learning_rate, epsilon=1e-05, clipnorm=0.5)
+            learning_rate=learning_rate_fn, epsilon=1e-05, clipnorm=0.5)
         self.rnd_optimizer = tf.keras.optimizers.Adam(
             learning_rate=learning_rate, epsilon=1e-05, clipnorm=0.5)
 
@@ -664,7 +665,7 @@ def main():
     render = False
     n_step_update = 128  # steps before you update the RND
     n_eps_update = 5  # episode before you update the PPO
-    n_episode = 100000  # episode you want to run
+    n_episode = 10000  # episode you want to run
     n_init_episode = 256
     n_saved = 10  # episode to run before saving the weights
 
