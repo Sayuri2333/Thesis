@@ -2,7 +2,6 @@ import gym
 import argparse
 
 import tensorflow as tf
-
 print(tf.executing_eagerly())
 import tensorflow_probability as tfp
 from tensorflow.keras.layers import MaxPooling3D, Conv3D, GlobalAveragePooling2D, concatenate, add, Multiply, Permute, Softmax, AveragePooling2D, MaxPooling2D, Convolution2D, LeakyReLU, Reshape, Lambda, Conv2D, LSTMCell, LSTM, Dense, RepeatVector, TimeDistributed, Input, BatchNormalization, multiply, Concatenate, Flatten, Activation, dot, Dot, Dropout
@@ -405,9 +404,6 @@ class Agent():
         Kl = self.distributions.kl_divergence(old_action_probs, action_probs)
 
         # Combining TR-PPO with Rollback (Truly PPO)
-        # pg_loss = tf.where(
-        #     tf.logical_and(Kl >= self.policy_kl_range, ratios > 1),
-        #     ratios * Advantages - self.policy_params * Kl, ratios * Advantages)
         pg_loss = tf.minimum(
             ratios * Advantages,
             tf.clip_by_value(ratios, 1 - 0.2, 1 + 0.2) * Advantages)
@@ -420,10 +416,8 @@ class Agent():
         ex_vpredclipped = Old_ex_values + tf.clip_by_value(
             ex_values - Old_ex_values, -self.value_clip, self.value_clip
         )  # Minimize the difference between old value and new value
-        ex_vf_losses1 = tf.math.square(External_Returns -
-                                       ex_values)  # Mean Squared Error
-        ex_vf_losses2 = tf.math.square(External_Returns -
-                                       ex_vpredclipped)  # Mean Squared Error
+        ex_vf_losses1 = tf.math.square(External_Returns - ex_values)  # Mean Squared Error
+        ex_vf_losses2 = tf.math.square(External_Returns - ex_vpredclipped)  # Mean Squared Error
         critic_ext_loss = tf.math.reduce_mean(
             tf.math.maximum(ex_vf_losses1, ex_vf_losses2))
         # Getting Intrinsic critic loss
@@ -612,7 +606,7 @@ def make_env(gym_id):
     env = EpisodicLifeEnv(env)
     if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
-    env = ClipRewardEnv(env)
+    # env = ClipRewardEnv(env)
     env = ResizeObservation(env, (80, 80))
     env = gym.wrappers.GrayScaleObservation(env, keep_dim=True)
     env = NormalizedEnv(env, ob=True, ret=False)
@@ -627,10 +621,12 @@ def run_episode(env, agent, state_dim, render, training_mode, t_updates,
     done = False
     total_reward = 0
     eps_time = 0
+    action_list = []
     ############################################total_reward
 
     while not done:
         action = int(agent.act(state))
+        action_list.append(action)
         next_state, reward, done, _ = env.step(action)
         next_state = np.array(next_state)
         eps_time += 1
@@ -653,7 +649,9 @@ def run_episode(env, agent, state_dim, render, training_mode, t_updates,
                 t_updates = 0
 
         if done:
-            return total_reward, eps_time, t_updates
+            action_var = np.var(action_list)
+            del action_list
+            return total_reward, eps_time, t_updates, action_var
 
 
 def main():
@@ -721,7 +719,7 @@ def main():
     #############################################
 
     for i_episode in range(1, n_episode + 1):
-        total_reward, time, t_updates = run_episode(env, agent, state_dim,
+        total_reward, time, t_updates, action_var = run_episode(env, agent, state_dim,
                                                     render, training_mode,
                                                     t_updates, n_step_update)
         print('Episode {} \t t_reward: {} \t time: {} \t '.format(
@@ -736,6 +734,7 @@ def main():
                 print('weights saved')
 
         wandb.log({"rewards": int(total_reward)}, commit=False)
+        wandb.log({"action_var": action_var}, commit=False)
 
 
 if __name__ == '__main__':
