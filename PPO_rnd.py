@@ -42,7 +42,7 @@ else:
 
 # strategy = tf.distribute.MirroredStrategy()
 
-# 
+# 输入参数
 parser = argparse.ArgumentParser(description='Training parameters')
 
 parser.add_argument('--game',
@@ -55,17 +55,21 @@ parser.set_defaults(render=False)
 args = parser.parse_args()
 
 
+# 
 class Utils():
+    # 计算新的平均值
     def count_new_mean(self, prevMean, prevLen, newData):
         return ((prevMean * prevLen) +
                 tf.math.reduce_sum(newData, 0)) / (prevLen + newData.shape[0])
 
+    # 计算新的标准差
     def count_new_std(self, prevStd, prevLen, newData):
         return tf.math.sqrt(
             ((tf.math.square(prevStd) * prevLen) +
              (tf.math.reduce_variance(newData, 0) * newData.shape[0])) /
             (prevStd + newData.shape[0]))
-
+    
+    # 标准化data中的数据，并完成剪切
     def normalize(self, data, mean=None, std=None, clip=None):
         if isinstance(mean, tf.Tensor) and isinstance(std, tf.Tensor):
             data_normalized = (data - mean) / (std + 1e-8)
@@ -78,8 +82,9 @@ class Utils():
 
         return data_normalized
 
-
+# 骨架模型
 backbone = eval(args.model)()
+# 参数初始化
 initializer = tf.keras.initializers.Orthogonal(gain=0.1)
 
 
@@ -121,6 +126,7 @@ class Critic_Model(Model):
 class RND_Model(Model):
     def __init__(self, state_dim, action_dim):
         super(RND_Model, self).__init__()
+        # 提取最后一帧数据
         self.last_frame = Lambda(lambda x: x[:, -1, :, :, :])
         self.conv1 = Conv2D(32,
                             8, (4, 4),
@@ -149,7 +155,7 @@ class RND_Model(Model):
         x = self.outputs(x)
         return x
 
-
+# 专门存observation的结构
 class ObsMemory():
     def __init__(self, state_dim):
         self.observations = []
@@ -168,11 +174,14 @@ class ObsMemory():
 
     def get_all_tensor(self):
         observations = tf.constant(self.observations, dtype=tf.float32)
+        # 返回dataset对象
         return tf.data.Dataset.from_tensor_slices(observations)
 
+    # 将obs存入数组
     def save_eps(self, obs):
         self.observations.append(obs)
 
+    # 保存obs和reward的std和avg
     def save_observation_normalize_parameter(self, mean_obs, std_obs,
                                              total_number_obs):
         self.mean_obs = mean_obs
@@ -184,10 +193,12 @@ class ObsMemory():
         self.std_in_rewards = std_in_rewards
         self.total_number_rwd = total_number_rwd
 
+    # 删掉所有的obs
     def clear_memory(self):
         del self.observations[:]
 
 
+# 作为记忆存储的结构
 class Memory():
     def __init__(self):
         self.actions = []
@@ -199,6 +210,7 @@ class Memory():
     def __len__(self):
         return len(self.dones)
 
+    # 将存储的内容转换为tf.constant然后返回
     def get_all_tensor(self):
         states = tf.constant(self.states, dtype=tf.float32)
         actions = tf.constant(self.actions, dtype=tf.float32)
@@ -210,6 +222,7 @@ class Memory():
         return tf.data.Dataset.from_tensor_slices(
             (states, actions, rewards, dones, next_states))
 
+    # 存储
     def save_eps(self, state, action, reward, done, next_state):
         self.rewards.append(reward)
         self.states.append(state)
@@ -217,6 +230,7 @@ class Memory():
         self.dones.append(done)
         self.next_states.append(next_state)
 
+    # 清理
     def clear_memory(self):
         del self.actions[:]
         del self.states[:]
@@ -227,18 +241,23 @@ class Memory():
 
 class Distributions():
     def sample(self, datas):
+        # probs给概率P，使用sample方法根据概率进行抽样
         distribution = tfp.distributions.Categorical(probs=datas)
         return distribution.sample()
 
     def entropy(self, datas):
+        # 返回probs这一堆概率值的entropy
         distribution = tfp.distributions.Categorical(probs=datas)
         return distribution.entropy()
 
     def logprob(self, datas, value_data):
+        # 返回概率的log值
         distribution = tfp.distributions.Categorical(probs=datas)
+        
         return tf.expand_dims(distribution.log_prob(value_data), 1)
 
     def kl_divergence(self, datas1, datas2):
+        # 返回两个分布的KL距离
         distribution1 = tfp.distributions.Categorical(probs=datas1)
         distribution2 = tfp.distributions.Categorical(probs=datas2)
 
@@ -246,6 +265,7 @@ class Distributions():
             tfp.distributions.kl_divergence(distribution1, distribution2), 1)
 
 
+# 根据reward，value，next value以及done的值，采用三种方法计算value
 class PolicyFunction():
     def __init__(self, gamma=0.99, lam=0.95):
         self.gamma = gamma
@@ -254,7 +274,7 @@ class PolicyFunction():
     def monte_carlo_discounted(self, rewards, dones):
         running_add = 0
         returns = []
-
+        # 从后往前算cumulative reward
         for step in reversed(range(len(rewards))):
             running_add = rewards[step] + (
                 1.0 - dones[step]) * self.gamma * running_add
@@ -263,16 +283,19 @@ class PolicyFunction():
         return tf.stack(returns)
 
     def temporal_difference(self, reward, next_value, done):
+        # one-step TD
         q_values = reward + (1 - done) * self.gamma * next_value
         return q_values
 
     def generalized_advantage_estimation(self, values, rewards, next_values,
                                          dones):
+        
         gae = 0
         adv = []
-
+        # one-step TD - predict value
         delta = rewards + (1.0 - dones) * self.gamma * next_values - values
         for step in reversed(range(len(rewards))):
+            # 对delta进行一个类似cumulative reward的算
             gae = delta[step] + (1.0 -
                                  dones[step]) * self.gamma * self.lam * gae
             adv.insert(0, gae)
@@ -328,6 +351,7 @@ class Agent():
     def save_observation(self, obs):
         self.obs_memory.save_eps(obs)
 
+    # 更新obs_memory的标准化系数
     def update_obs_normalization_param(self, obs):
         obs = tf.constant(obs, dtype=tf.float32)
 
@@ -351,7 +375,7 @@ class Agent():
         self.obs_memory.save_rewards_normalize_parameter(
             std_in_rewards, total_number_rwd)
 
-    # Loss for RND
+    # RND Loss
     def get_rnd_loss(self, state_pred, state_target):
         # Don't update target state value
         state_target = tf.stop_gradient(state_target)
@@ -367,70 +391,86 @@ class Agent():
                      state_preds, state_targets, in_values, old_in_values,
                      next_in_values, std_in_rewards):
 
-        # Don't use old value in backpropagation
+        # stop_gradient将原来的tensor当作一个独立的节点来看待，切断反向传播的路径
         Old_ex_values = tf.stop_gradient(old_ex_values)
 
-        # Getting general advantages estimator
+        # 将外部奖励扔进去计算GAE
         External_Advantages = self.policy_function.generalized_advantage_estimation(
             ex_values, ex_rewards, next_ex_values, dones)
+        # 加上原来的value作为return
         External_Returns = tf.stop_gradient(External_Advantages + ex_values)
+        # 进行一个标准化
         External_Advantages = tf.stop_gradient(
             (External_Advantages - tf.math.reduce_mean(External_Advantages)) /
             (tf.math.reduce_std(External_Advantages) + 1e-6))
 
-        # Computing internal reward, then getting internal general advantages estimator
+        # 计算内在奖励，除以方差的标准化
         in_rewards = tf.math.square(state_targets - state_preds) * 0.5 / (
             tf.math.reduce_mean(std_in_rewards) + 1e-8)
+        # 计算GAE（这个value是由专门计算in_value的critic网络算的）
         Internal_Advantages = self.policy_function.generalized_advantage_estimation(
             in_values, in_rewards, next_in_values, dones)
+        # 和外部奖励一样的步骤
         Internal_Returns = tf.stop_gradient(Internal_Advantages + in_values)
         Internal_Advantages = tf.stop_gradient(
             (Internal_Advantages - tf.math.reduce_mean(Internal_Advantages)) /
             (tf.math.reduce_std(Internal_Advantages) + 1e-6))
 
-        # Getting overall advantages
+        # 对内外部奖励进行一个权重的加法
         Advantages = tf.stop_gradient(
             self.ex_advantages_coef * External_Advantages +
             self.in_advantages_coef * Internal_Advantages)
 
-        # Finding the ratio (pi_theta / pi_theta__old):
+        # 计算log之后相减再exp作为比值（引入误差？）
+        # actions = actions.reshape(-1,1)
+        # index = np.arange(len(actions)).reshape(-1, 1)
+        # index = np.hstack((index, actions))
+        # probs = tf.gather_nd(action_probs, index)
+        # old_probs = tf.gather_nd(old_action_probs, index)
+        # ratios = probs / old_probs
         logprobs = self.distributions.logprob(action_probs, actions)
         Old_logprobs = tf.stop_gradient(
             self.distributions.logprob(old_action_probs, actions))
         ratios = tf.math.exp(logprobs -
-                             Old_logprobs)  # ratios = old_logprobs / logprobs
+                             Old_logprobs)
 
-        # Finding KL Divergence
-        Kl = self.distributions.kl_divergence(old_action_probs, action_probs)
-
-        # Combining TR-PPO with Rollback (Truly PPO)
+        # cal PPO-clip, 0.2 is hyper-parameter
         pg_loss = tf.minimum(
             ratios * Advantages,
             tf.clip_by_value(ratios, 1 - 0.2, 1 + 0.2) * Advantages)
-        pg_loss = tf.math.reduce_mean(pg_loss)
-        # Getting entropy from the action probability
+        # add duel-clip
+        duel_clip_loss = tf.where(
+            tf.math.less(Advantages, 0),
+            tf.maximum(pg_loss, 3 * Advantages),
+            pg_loss
+        )
+        pg_loss = tf.math.reduce_mean(duel_clip_loss)
+        # 从prob中获得entropy
         dist_entropy = tf.math.reduce_mean(
             self.distributions.entropy(action_probs))
 
-        # Getting critic loss by using Clipped critic value
+        # 对预测的外部value进行一个裁剪
         ex_vpredclipped = Old_ex_values + tf.clip_by_value(
             ex_values - Old_ex_values, -self.value_clip, self.value_clip
-        )  # Minimize the difference between old value and new value
+        )
+        # 分别计算clip后于clip前预测的外部value与外部return的差
         ex_vf_losses1 = tf.math.square(External_Returns - ex_values)  # Mean Squared Error
         ex_vf_losses2 = tf.math.square(External_Returns - ex_vpredclipped)  # Mean Squared Error
+        # 把这个差当作loss
         critic_ext_loss = tf.math.reduce_mean(
             tf.math.maximum(ex_vf_losses1, ex_vf_losses2))
-        # Getting Intrinsic critic loss
+        # 把内在奖励与in_values的差当作loss
         critic_int_loss = tf.math.reduce_mean(
             tf.math.square(Internal_Returns - in_values))
-        # Getting overall critic loss
+        # critic loss等于两个差的和，权重相等
         critic_loss = (critic_ext_loss + critic_int_loss) * 0.5
 
-        # We need to maximaze Policy Loss to make agent always find Better Rewards
-        # and minimize Critic Loss
+        # 对于PG loss，它实际上是目标函数 我们要最大化它 也就是最小化它的负数
+        # 对于critic loss 我们要最小化它
+        # 对于熵 熵越大概率分布越均匀 所以我们要最大化熵 也就是最小化它的负数
         loss = (critic_loss * self.vf_loss_coef) - (
             dist_entropy * self.entropy_coef) - pg_loss
-        return loss
+        return loss, critic_loss, dist_entropy, pg_loss
 
     # @tf.function
     def act(self, state):
@@ -440,10 +480,7 @@ class Agent():
         wandb.log({'max_p': tf.math.reduce_max(action_probs).numpy()}, commit=False)
         wandb.log({'min_p': tf.math.reduce_min(action_probs).numpy()}, commit=False)
         wandb.log({'value': critic.numpy()})
-        # We don't need sample the action in Test Mode
-        # only sampling the action in Training Mode in order to exploring the actions
         if self.is_training_mode:
-            # Sample the action
             action = self.distributions.sample(action_probs)
         else:
             action = tf.math.argmax(action_probs, 1)
@@ -459,7 +496,7 @@ class Agent():
 
         return (state_target - state_pred)
 
-    # Get loss and Do backpropagation
+    # 进行一个反向传播
     # @tf.function
     def training_rnd(self, obs, mean_obs, std_obs):
         obs = self.utils.normalize(obs, mean_obs, std_obs)
@@ -473,14 +510,12 @@ class Agent():
         self.rnd_optimizer.apply_gradients(
             zip(gradients, self.rnd_predict.trainable_variables))
 
-    # Get loss and Do backpropagation
+    # 进行一个反向传播
     # @tf.function
     def training_ppo(self, states, actions, rewards, dones, next_states,
                      mean_obs, std_obs, std_in_rewards):
-        # Don't update rnd value
         obs = tf.stop_gradient(
-            self.utils.normalize(next_states, mean_obs, std_obs,
-                                 self.clip_normalization))
+            self.utils.normalize(next_states, mean_obs, std_obs))
         state_preds = self.rnd_predict(obs)
         state_targets = self.rnd_target(obs)
 
@@ -492,12 +527,14 @@ class Agent():
             next_ex_values, next_in_values = self.ex_critic(
                 next_states), self.in_critic(next_states)
 
-            loss = self.get_PPO_loss(action_probs, ex_values, old_action_probs,
+            loss, critic_loss, dist_entropy, pg_loss = self.get_PPO_loss(action_probs, ex_values, old_action_probs,
                                      old_ex_values, next_ex_values, actions,
                                      rewards, dones, state_preds,
                                      state_targets, in_values, old_in_values,
                                      next_in_values, std_in_rewards)
-        wandb.log({"loss": loss.numpy()}, commit=False)
+        wandb.log({"critic_loss": critic_loss.numpy()}, commit=False)
+        wandb.log({"entropy": dist_entropy.numpy()}, commit=False)
+        wandb.log({"pg_loss": pg_loss.numpy()}, commit=False)
         gradients = tape.gradient(
             loss, self.actor.trainable_variables +
             self.ex_critic.trainable_variables +
@@ -508,17 +545,17 @@ class Agent():
                 self.ex_critic.trainable_variables +
                 self.in_critic.trainable_variables))
 
-    # Update the model
+    # 更新rnd模型
     def update_rnd(self):
         batch_size = int(len(self.obs_memory) / self.minibatch)
 
-        # Optimize policy for K epochs:
+        # K epochs
         intrinsic_rewards = 0
         for _ in range(self.RND_epochs):
             for obs in self.obs_memory.get_all_tensor().batch(batch_size):
                 self.training_rnd(obs, self.obs_memory.mean_obs,
                                   self.obs_memory.std_obs)
-
+        # 训练完之后
         intrinsic_rewards = self.compute_intrinsic_reward(
             self.obs_memory.get_all(), self.obs_memory.mean_obs,
             self.obs_memory.std_obs)
@@ -529,7 +566,7 @@ class Agent():
         # Clear the memory
         self.obs_memory.clear_memory()
 
-    # Update the model
+    # 更新模型
     def update_ppo(self):
         batch_size = int(len(self.memory) / self.minibatch)
 
@@ -542,10 +579,10 @@ class Agent():
                                   self.obs_memory.std_obs,
                                   self.obs_memory.std_in_rewards)
 
-        # Clear the memory
+        # 清除缓存数据
         self.memory.clear_memory()
 
-        # Copy new weights into old policy:
+        # 更新旧的模型
         self.actor_old.set_weights(self.actor.get_weights())
         self.ex_critic_old.set_weights(self.ex_critic.get_weights())
         self.in_critic_old.set_weights(self.in_critic.get_weights())
