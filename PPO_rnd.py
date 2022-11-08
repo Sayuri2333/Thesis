@@ -547,7 +547,7 @@ class Agent():
 
     # 更新rnd模型
     def update_rnd(self):
-        batch_size = int(len(self.obs_memory) / self.minibatch)
+        batch_size = self.minibatch
 
         # K epochs
         intrinsic_rewards = 0
@@ -568,7 +568,7 @@ class Agent():
 
     # 更新模型
     def update_ppo(self):
-        batch_size = int(len(self.memory) / self.minibatch)
+        batch_size = self.minibatch
 
         # Optimize policy for K epochs:
         for _ in range(self.PPO_epochs):
@@ -707,7 +707,7 @@ def main():
     value_clip = 1.0  # Value clipping
     entropy_coef = 0.05  # entropy loss ratio
     vf_loss_coef = 1.0  # critic loss ratio
-    minibatch = 4  # size of batch = n_update / minibatch
+    minibatch = 64  # size of batch = n_update / minibatch
     PPO_epochs = 4  # epochs for an update
 
     gamma = 0.99
