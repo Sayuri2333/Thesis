@@ -588,29 +588,29 @@ class Agent():
         self.in_critic_old.set_weights(self.in_critic.get_weights())
 
     def save_weights(self):
-        self.actor.save_weights('bipedalwalker_w/actor_ppo', save_format='tf')
+        self.actor.save_weights('{args.game}/actor_ppo', save_format='tf')
         self.actor_old.save_weights('bipedalwalker_w/actor_old_ppo',
                                     save_format='tf')
 
-        self.ex_critic.save_weights('bipedalwalker_w/ex_critic_ppo',
+        self.ex_critic.save_weights('{args.game}/ex_critic_ppo',
                                     save_format='tf')
-        self.ex_critic_old.save_weights('bipedalwalker_w/ex_critic_old_ppo',
+        self.ex_critic_old.save_weights('{args.game}/ex_critic_old_ppo',
                                         save_format='tf')
 
-        self.in_critic.save_weights('bipedalwalker_w/in_critic_ppo',
+        self.in_critic.save_weights('{args.game}/in_critic_ppo',
                                     save_format='tf')
-        self.in_critic_old.save_weights('bipedalwalker_w/in_critic_old_ppo',
+        self.in_critic_old.save_weights('{args.game}/in_critic_old_ppo',
                                         save_format='tf')
 
-    def load_weights(self):
-        self.actor.load_weights('bipedalwalker_w/actor_ppo')
-        self.actor_old.load_weights('bipedalwalker_w/actor_old_ppo')
+    def load_weights(self):batch
+        self.actor.load_weights('{args.game}/actor_ppo')
+        self.actor_old.load_weights('{args.game}/actor_old_ppo')
 
-        self.ex_critic.load_weights('bipedalwalker_w/ex_critic_ppo')
-        self.ex_critic_old.load_weights('bipedalwalker_w/ex_critic_old_ppo')
+        self.ex_critic.load_weights('{args.game}/ex_critic_ppo')
+        self.ex_critic_old.load_weights('{args.game}/ex_critic_old_ppo')
 
-        self.in_critic.load_weights('bipedalwalker_w/in_critic_ppo')
-        self.in_critic_old.load_weights('bipedalwalker_w/in_critic_old_ppo')
+        self.in_critic.load_weights('{args.game}/in_critic_ppo')
+        self.in_critic_old.load_weights('{args.game}/in_critic_old_ppo')
 
 
 def run_inits_episode(env, agent, state_dim, render, n_init_episode):
@@ -707,7 +707,7 @@ def main():
     value_clip = 1.0  # Value clipping
     entropy_coef = 0.05  # entropy loss ratio
     vf_loss_coef = 1.0  # critic loss ratio
-    minibatch = 1  # size of batch = n_update / minibatch
+    minibatch = 4  # size of batch = n_update / minibatch
     PPO_epochs = 4  # epochs for an update
 
     gamma = 0.99

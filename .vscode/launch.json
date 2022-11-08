@@ -4,6 +4,7 @@
     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+    
 
         {
             "name": "Python: Current File",
@@ -13,7 +14,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--model", "DQN",
+                "--model", "ViTransasdqwdqw",
                 "--game", "ALE/Breakout-v5"
             ]
         }
