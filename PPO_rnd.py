@@ -602,7 +602,7 @@ class Agent():
         self.in_critic_old.save_weights('{args.game}/in_critic_old_ppo',
                                         save_format='tf')
 
-    def load_weights(self):batch
+    def load_weights(self):
         self.actor.load_weights('{args.game}/actor_ppo')
         self.actor_old.load_weights('{args.game}/actor_old_ppo')
 
