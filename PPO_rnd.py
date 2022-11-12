@@ -705,7 +705,7 @@ def main():
     n_saved = 10  # episode to run before saving the weights
 
     value_clip = 1.0  # Value clipping
-    entropy_coef = 0.05  # entropy loss ratio
+    entropy_coef = 0.1  # entropy loss ratio
     vf_loss_coef = 1.0  # critic loss ratio
     minibatch = 128  # size of batch = n_update / minibatch
     PPO_epochs = 4  # epochs for an update
