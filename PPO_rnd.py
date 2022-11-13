@@ -1,5 +1,8 @@
 import gym
+import gymnasium
 import argparse
+from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper
+from MiniGrid_Wrappers import GrayImgObsWrapper, FrameStackWrapper
 
 import tensorflow as tf
 print(tf.executing_eagerly())
@@ -635,20 +638,27 @@ def run_inits_episode(env, agent, state_dim, render, n_init_episode):
 
 
 def make_env(gym_id):
-    env = gym.make(gym_id)
-    env = gym.wrappers.RecordEpisodeStatistics(env)
-    env = TimeLimit(env, max_episode_steps=2000)
-    env = NoopResetEnv(env, noop_max=30)
-    # env = MaxAndSkipEnv(env, skip=4)
-    env = EpisodicLifeEnv(env)
-    if "FIRE" in env.unwrapped.get_action_meanings():
-        env = FireResetEnv(env)
-    # env = ClipRewardEnv(env)
-    env = ResizeObservation(env, (80, 80))
-    env = gym.wrappers.GrayScaleObservation(env, keep_dim=True)
-    env = NormalizedEnv(env, ob=True, ret=False)
-    env = gym.wrappers.FrameStack(env, 8)
-    return env
+    if "MiniGrid" in gym_id:
+        env = gymnasium.make(gym_id)
+        env = RGBImgPartialObsWrapper(env)
+        env = GrayImgObsWrapper(env)
+        env = FrameStackWrapper(env, num_stack=8)
+        return env
+    else:
+        env = gym.make(gym_id)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        env = TimeLimit(env, max_episode_steps=2000)
+        env = NoopResetEnv(env, noop_max=30)
+        # env = MaxAndSkipEnv(env, skip=4)
+        env = EpisodicLifeEnv(env)
+        if "FIRE" in env.unwrapped.get_action_meanings():
+            env = FireResetEnv(env)
+        # env = ClipRewardEnv(env)
+        env = ResizeObservation(env, (80, 80))
+        env = gym.wrappers.GrayScaleObservation(env, keep_dim=True)
+        env = NormalizedEnv(env, ob=True, ret=False)
+        env = gym.wrappers.FrameStack(env, 8)
+        return env
 
 
 def run_episode(env, agent, state_dim, render, training_mode, t_updates,
@@ -713,7 +723,7 @@ def main():
     gamma = 0.99
     lam = 0.95
     learning_rate = 2.5e-4
-    env_name = 'ALE/Breakout-v5'
+    env_name = args.game
     env = make_env(env_name)
 
     state_dim = list(env.observation_space.shape)
