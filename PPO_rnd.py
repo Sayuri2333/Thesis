@@ -53,6 +53,7 @@ parser.add_argument('--game',
                     default='ALE/Breakout-v5',
                     help="Games in Atari")
 parser.add_argument('--model', type=str, default='DQN', help="Model we use")
+parser.add_argument('--action_dim', type=int, default=3, help="Action dimension")
 parser.set_defaults(render=False)
 
 args = parser.parse_args()
@@ -99,6 +100,7 @@ class Actor_Model(Model):
             256,
             kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
             activation='relu')
+        # self.outputs = Dense(action_dim,activation='linear',name='output',kernel_initializer=initializer)
         self.outputs = Dense(action_dim,activation='softmax',name='output',kernel_initializer=initializer)
 
 
@@ -246,23 +248,28 @@ class Distributions():
     def sample(self, datas):
         # probs给概率P，使用sample方法根据概率进行抽样
         distribution = tfp.distributions.Categorical(probs=datas)
+        # distribution = tfp.distributions.Categorical(logits=datas)
         return distribution.sample()
 
     def entropy(self, datas):
         # 返回probs这一堆概率值的entropy
         distribution = tfp.distributions.Categorical(probs=datas)
+        # distribution = tfp.distributions.Categorical(logits=datas)
         return distribution.entropy()
 
     def logprob(self, datas, value_data):
         # 返回概率的log值
         distribution = tfp.distributions.Categorical(probs=datas)
+        # distribution = tfp.distributions.Categorical(logits=datas)
         
         return tf.expand_dims(distribution.log_prob(value_data), 1)
 
     def kl_divergence(self, datas1, datas2):
         # 返回两个分布的KL距离
         distribution1 = tfp.distributions.Categorical(probs=datas1)
+        # distribution1 = tfp.distributions.Categorical(logits=datas1)
         distribution2 = tfp.distributions.Categorical(probs=datas2)
+        # distribution2 = tfp.distributions.Categorical(logits=datas2)
 
         return tf.expand_dims(
             tfp.distributions.kl_divergence(distribution1, distribution2), 1)
@@ -727,7 +734,7 @@ def main():
     env = make_env(env_name)
 
     state_dim = list(env.observation_space.shape)
-    action_dim = env.action_space.n
+    action_dim = args.action_dim
     ##############################################
     runs = wandb.init(
         project=args.game.split('/')[-1] + '_PPO_' +
