@@ -1,8 +1,8 @@
 import gym
 import gymnasium
 import argparse
-from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper
-from MiniGrid_Wrappers import GrayImgObsWrapper, FrameStackWrapper
+from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper, StateBonus
+from MiniGrid_Wrappers import GrayImgObsWrapper, FrameStackWrapper, MaxStepWrapper
 
 import tensorflow as tf
 print(tf.executing_eagerly())
@@ -647,9 +647,11 @@ def run_inits_episode(env, agent, state_dim, render, n_init_episode):
 def make_env(gym_id):
     if "MiniGrid" in gym_id:
         env = gymnasium.make(gym_id)
+        env = StateBonus(env)
         env = RGBImgPartialObsWrapper(env)
         env = GrayImgObsWrapper(env)
         env = FrameStackWrapper(env, num_stack=8)
+        env = MaxStepWrapper(env, 100)
         return env
     else:
         env = gym.make(gym_id)

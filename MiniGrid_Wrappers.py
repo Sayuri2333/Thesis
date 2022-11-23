@@ -47,3 +47,22 @@ class FrameStackWrapper(gym.Wrapper):
         observation,_ = self.env.reset(**kwargs)
         [self.frames.append(observation) for _ in range(self.num_stack)]
         return self.observation()
+
+
+class MaxStepWrapper(gym.Wrapper):
+    def __init__(self, env, max_steps):
+        super().__init__(env)
+        self.step_count = 0
+        self.max_steps = max_steps
+    
+    def step(self, action):
+        obs, reward, terminated, info = self.env.step(action)
+        self.count += 1
+        if self.count >= self.max_steps:
+            return obs, reward, True, info
+        else:
+            return obs, reward, terminated, info
+    
+    def reset(self, **kwargs):
+        self.count = 0
+        return self.env.reset(**kwargs)
