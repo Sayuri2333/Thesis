@@ -548,11 +548,11 @@ class Agent():
         state = tf.expand_dims(tf.cast(state, dtype=tf.float32), 0)
         action_probs = self.actor(state)
         critic = self.ex_critic(state)
-        # wandb.log({'max_p': tf.math.reduce_max(action_probs).numpy()},
-        #           commit=False)
-        # wandb.log({'min_p': tf.math.reduce_min(action_probs).numpy()},
-        #           commit=False)
-        # wandb.log({'value': critic.numpy()})
+        wandb.log({'max_p': tf.math.reduce_max(action_probs).numpy()},
+                  commit=False)
+        wandb.log({'min_p': tf.math.reduce_min(action_probs).numpy()},
+                  commit=False)
+        wandb.log({'value': critic.numpy()})
         if self.is_training_mode:
             action = self.distributions.sample(action_probs)
         else:
@@ -605,9 +605,9 @@ class Agent():
                 next_ex_values, actions, rewards, dones, state_preds,
                 state_targets, in_values, old_in_values, next_in_values,
                 std_in_rewards)
-        # wandb.log({"critic_loss": critic_loss.numpy()}, commit=False)
-        # wandb.log({"entropy": dist_entropy.numpy()}, commit=False)
-        # wandb.log({"pg_loss": pg_loss.numpy()}, commit=False)
+        wandb.log({"critic_loss": critic_loss.numpy()}, commit=False)
+        wandb.log({"entropy": dist_entropy.numpy()}, commit=False)
+        wandb.log({"pg_loss": pg_loss.numpy()}, commit=False)
         gradients = tape.gradient(
             loss, self.actor.trainable_variables +
             self.ex_critic.trainable_variables +
@@ -628,7 +628,9 @@ class Agent():
             loss, critic_loss, dist_entropy, pg_loss = self.get_loss(action_probs, values, old_action_probs,
                                  old_values, next_values, actions, rewards,
                                  dones)
-
+        wandb.log({"critic_loss": critic_loss.numpy()}, commit=False)
+        wandb.log({"entropy": dist_entropy.numpy()}, commit=False)
+        wandb.log({"pg_loss": pg_loss.numpy()}, commit=False)
         gradients = tape.gradient(
             loss,
             self.actor.trainable_variables + self.ex_critic.trainable_variables)
@@ -874,8 +876,8 @@ def main():
                 agent.save_weights()
                 print('weights saved')
 
-        # wandb.log({"rewards": int(total_reward)}, commit=False)
-        # wandb.log({"action_var": action_var}, commit=False)
+        wandb.log({"rewards": int(total_reward)}, commit=False)
+        wandb.log({"action_var": action_var}, commit=False)
 
 
 if __name__ == '__main__':
