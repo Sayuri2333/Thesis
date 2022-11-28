@@ -1,4 +1,5 @@
-from gymnasium.core import ObservationWrapper
+import math
+from gymnasium.core import ObservationWrapper, Wrapper
 import gymnasium as gym
 import cv2
 from gymnasium import spaces
@@ -90,3 +91,38 @@ class NormalizeObsWrapper(gym.Wrapper):
         obs = self.env.reset(**kwargs)
         obs = self.normalize(np.array([obs]))[0]
         return obs
+    
+class StateBonus(Wrapper):
+    """
+    Adds an exploration bonus based on which positions
+    are visited on the grid.
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        self.counts = {}
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+
+        # Tuple based on which we index the counts
+        # We use the position after an update
+        env = self.unwrapped
+        tup = tuple(env.agent_pos)
+
+        # Get the count for this key
+        pre_count = 0
+        if tup in self.counts:
+            pre_count = self.counts[tup]
+
+        # Update the count for this key
+        new_count = pre_count + 1
+        self.counts[tup] = new_count
+
+        bonus = 0.1 / math.sqrt(new_count)
+        reward += bonus
+
+        return obs, reward, terminated, truncated, info
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)

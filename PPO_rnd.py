@@ -1,8 +1,8 @@
 import gym
 import gymnasium
 import argparse
-from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper, StateBonus
-from MiniGrid_Wrappers import GrayImgObsWrapper, FrameStackWrapper, MaxStepWrapper, NormalizeObsWrapper
+from minigrid.wrappers import RGBImgPartialObsWrapper, RGBImgObsWrapper
+from MiniGrid_Wrappers import StateBonus, GrayImgObsWrapper, FrameStackWrapper, MaxStepWrapper, NormalizeObsWrapper
 
 import tensorflow as tf
 
