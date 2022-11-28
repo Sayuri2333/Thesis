@@ -2,9 +2,10 @@ import gym
 import gymnasium
 import argparse
 from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper, StateBonus
-from MiniGrid_Wrappers import GrayImgObsWrapper, FrameStackWrapper, MaxStepWrapper
+from MiniGrid_Wrappers import GrayImgObsWrapper, FrameStackWrapper, MaxStepWrapper, NormalizeObsWrapper
 
 import tensorflow as tf
+
 print(tf.executing_eagerly())
 import tensorflow_probability as tfp
 from tensorflow.keras.layers import MaxPooling3D, Conv3D, GlobalAveragePooling2D, concatenate, add, Multiply, Permute, Softmax, AveragePooling2D, MaxPooling2D, Convolution2D, LeakyReLU, Reshape, Lambda, Conv2D, LSTMCell, LSTM, Dense, RepeatVector, TimeDistributed, Input, BatchNormalization, multiply, Concatenate, Flatten, Activation, dot, Dot, Dropout
@@ -14,12 +15,11 @@ from gym.wrappers.time_limit import TimeLimit
 import numpy as np
 import sys
 import numpy
-
-from model_ppo_tf2 import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFCA, MultiscaleTransformer, OnlyMultiscale, RNDmodel
+from model_ppo_tf2 import RNDmodel
+from model_ppo_tf2 import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFCA, MultiscaleTransformer, OnlyMultiscale
 from Atari_Warppers import NoopResetEnv, NormalizedEnv, ResizeObservation, SyncVectorEnv, ClipRewardEnv, EpisodicLifeEnv, FireResetEnv
 import wandb
 from wandb.keras import WandbCallback
-
 
 # 设置显存按需获取
 gpus = tf.config.experimental.list_physical_devices(device_type='GPU')
@@ -41,8 +41,6 @@ if len(gpu_list) > 0:
 else:
     print("NO GPUs")
 
-
-
 # strategy = tf.distribute.MirroredStrategy()
 
 # 输入参数
@@ -50,16 +48,20 @@ parser = argparse.ArgumentParser(description='Training parameters')
 
 parser.add_argument('--game',
                     type=str,
-                    default='ALE/Breakout-v5',
+                    default='MiniGrid-MemoryS11-v0',
                     help="Games in Atari")
 parser.add_argument('--model', type=str, default='DQN', help="Model we use")
-parser.add_argument('--action_dim', type=int, default=3, help="Action dimension")
+parser.add_argument('--action_dim',
+                    type=int,
+                    default=3,
+                    help="Action dimension")
+parser.add_argument('--rnd', action='store_true', help='If use RND model')
 parser.set_defaults(render=False)
 
 args = parser.parse_args()
 
 
-# 
+#
 class Utils():
     # 计算新的平均值
     def count_new_mean(self, prevMean, prevLen, newData):
@@ -72,7 +74,7 @@ class Utils():
             ((tf.math.square(prevStd) * prevLen) +
              (tf.math.reduce_variance(newData, 0) * newData.shape[0])) /
             (prevStd + newData.shape[0]))
-    
+
     # 标准化data中的数据，并完成剪切
     def normalize(self, data, mean=None, std=None, clip=None):
         if isinstance(mean, tf.Tensor) and isinstance(std, tf.Tensor):
@@ -85,6 +87,7 @@ class Utils():
             data_normalized = tf.clip_by_value(data_normalized, -clip, clip)
 
         return data_normalized
+
 
 # 骨架模型
 backbone = eval(args.model)()
@@ -101,8 +104,10 @@ class Actor_Model(Model):
             kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
             activation='relu')
         # self.outputs = Dense(action_dim,activation='linear',name='output',kernel_initializer=initializer)
-        self.outputs = Dense(action_dim,activation='softmax',name='output',kernel_initializer=initializer)
-
+        self.outputs = Dense(action_dim,
+                             activation='softmax',
+                             name='output',
+                             kernel_initializer=initializer)
 
     def call(self, x):
         x = self.backbone(x)
@@ -119,7 +124,9 @@ class Critic_Model(Model):
             256,
             kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
             activation='relu')
-        self.outputs = Dense(1, kernel_initializer=initializer, activation='relu')
+        self.outputs = Dense(1,
+                             kernel_initializer=initializer,
+                             activation='relu')
 
     def call(self, x):
         x = self.backbone(x)
@@ -159,6 +166,7 @@ class RND_Model(Model):
         x = self.flat(x)
         x = self.outputs(x)
         return x
+
 
 # 专门存observation的结构
 class ObsMemory():
@@ -261,7 +269,7 @@ class Distributions():
         # 返回概率的log值
         distribution = tfp.distributions.Categorical(probs=datas)
         # distribution = tfp.distributions.Categorical(logits=datas)
-        
+
         return tf.expand_dims(distribution.log_prob(value_data), 1)
 
     def kl_divergence(self, datas1, datas2):
@@ -299,7 +307,7 @@ class PolicyFunction():
 
     def generalized_advantage_estimation(self, values, rewards, next_values,
                                          dones):
-        
+
         gae = 0
         adv = []
         # one-step TD - predict value
@@ -314,9 +322,8 @@ class PolicyFunction():
 
 
 class Agent():
-    def __init__(self, state_dim, action_dim, is_training_mode,
-                 value_clip, entropy_coef,
-                 vf_loss_coef, minibatch, PPO_epochs, gamma, lam,
+    def __init__(self, state_dim, action_dim, is_training_mode, value_clip,
+                 entropy_coef, vf_loss_coef, minibatch, PPO_epochs, gamma, lam,
                  learning_rate, n_episode):
         self.value_clip = value_clip
         self.entropy_coef = entropy_coef
@@ -332,17 +339,19 @@ class Agent():
         self.ex_critic = Critic_Model(state_dim, action_dim)
         self.ex_critic_old = Critic_Model(state_dim, action_dim)
 
-        self.in_critic = Critic_Model(state_dim, action_dim)
-        self.in_critic_old = Critic_Model(state_dim, action_dim)
+        if args.rnd:
+            self.in_critic = Critic_Model(state_dim, action_dim)
+            self.in_critic_old = Critic_Model(state_dim, action_dim)
 
-        self.rnd_predict = RND_Model(state_dim, action_dim)
-        self.rnd_target = RND_Model(state_dim, action_dim)
+            self.rnd_predict = RND_Model(state_dim, action_dim)
+            self.rnd_target = RND_Model(state_dim, action_dim)
         learning_rate_fn = tf.keras.optimizers.schedules.PolynomialDecay(
             learning_rate, 10000, 0.1 * learning_rate, power=1)
         self.ppo_optimizer = tf.keras.optimizers.Adam(
             learning_rate=learning_rate_fn, epsilon=1e-05, clipnorm=0.5)
-        self.rnd_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=learning_rate, epsilon=1e-05, clipnorm=0.5)
+        if args.rnd:
+            self.rnd_optimizer = tf.keras.optimizers.Adam(
+                learning_rate=learning_rate, epsilon=1e-05, clipnorm=0.5)
 
         self.memory = Memory()
         self.obs_memory = ObsMemory(state_dim)
@@ -351,8 +360,9 @@ class Agent():
         self.policy_function = PolicyFunction(gamma, lam)
         self.distributions = Distributions()
         self.update_times = 0
-        self.ex_advantages_coef = 2
-        self.in_advantages_coef = 1
+        if args.rnd:
+            self.ex_advantages_coef = 2
+            self.in_advantages_coef = 1
         self.clip_normalization = 5
 
     def save_eps(self, state, action, reward, done, next_state):
@@ -386,14 +396,16 @@ class Agent():
             std_in_rewards, total_number_rwd)
 
     # RND Loss
-    def get_rnd_loss(self, state_pred, state_target):
-        # Don't update target state value
-        state_target = tf.stop_gradient(state_target)
+    if args.rnd:
 
-        # Mean Squared Error Calculation between state and predict
-        forward_loss = tf.math.reduce_mean(
-            tf.math.square(state_target - state_pred) * 0.5)
-        return forward_loss
+        def get_rnd_loss(self, state_pred, state_target):
+            # Don't update target state value
+            state_target = tf.stop_gradient(state_target)
+
+            # Mean Squared Error Calculation between state and predict
+            forward_loss = tf.math.reduce_mean(
+                tf.math.square(state_target - state_pred) * 0.5)
+            return forward_loss
 
     # Loss for PPO
     def get_PPO_loss(self, action_probs, ex_values, old_action_probs,
@@ -441,19 +453,15 @@ class Agent():
         logprobs = self.distributions.logprob(action_probs, actions)
         Old_logprobs = tf.stop_gradient(
             self.distributions.logprob(old_action_probs, actions))
-        ratios = tf.math.exp(logprobs -
-                             Old_logprobs)
+        ratios = tf.math.exp(logprobs - Old_logprobs)
 
         # cal PPO-clip, 0.2 is hyper-parameter
         pg_loss = tf.minimum(
             ratios * Advantages,
             tf.clip_by_value(ratios, 1 - 0.2, 1 + 0.2) * Advantages)
         # add duel-clip
-        duel_clip_loss = tf.where(
-            tf.math.less(Advantages, 0),
-            tf.maximum(pg_loss, 3 * Advantages),
-            pg_loss
-        )
+        duel_clip_loss = tf.where(tf.math.less(Advantages, 0),
+                                  tf.maximum(pg_loss, 3 * Advantages), pg_loss)
         pg_loss = tf.math.reduce_mean(duel_clip_loss)
         # 从prob中获得entropy
         dist_entropy = tf.math.reduce_mean(
@@ -461,11 +469,12 @@ class Agent():
 
         # 对预测的外部value进行一个裁剪
         ex_vpredclipped = Old_ex_values + tf.clip_by_value(
-            ex_values - Old_ex_values, -self.value_clip, self.value_clip
-        )
+            ex_values - Old_ex_values, -self.value_clip, self.value_clip)
         # 分别计算clip后于clip前预测的外部value与外部return的差
-        ex_vf_losses1 = tf.math.square(External_Returns - ex_values)  # Mean Squared Error
-        ex_vf_losses2 = tf.math.square(External_Returns - ex_vpredclipped)  # Mean Squared Error
+        ex_vf_losses1 = tf.math.square(External_Returns -
+                                       ex_values)  # Mean Squared Error
+        ex_vf_losses2 = tf.math.square(External_Returns -
+                                       ex_vpredclipped)  # Mean Squared Error
         # 把这个差当作loss
         critic_ext_loss = tf.math.reduce_mean(
             tf.math.maximum(ex_vf_losses1, ex_vf_losses2))
@@ -482,14 +491,68 @@ class Agent():
             dist_entropy * self.entropy_coef) - pg_loss
         return loss, critic_loss, dist_entropy, pg_loss
 
+    def get_loss(self, action_probs, ex_values, old_action_probs,
+                 old_ex_values, next_ex_values, actions, ex_rewards, dones):
+        # stop_gradient将原来的tensor当作一个独立的节点来看待，切断反向传播的路径
+        Old_ex_values = tf.stop_gradient(old_ex_values)
+
+        # 将外部奖励扔进去计算GAE
+        External_Advantages = self.policy_function.generalized_advantage_estimation(
+            ex_values, ex_rewards, next_ex_values, dones)
+        # 加上原来的value作为return
+        External_Returns = tf.stop_gradient(External_Advantages + ex_values)
+        # 进行一个标准化
+        External_Advantages = tf.stop_gradient(
+            (External_Advantages - tf.math.reduce_mean(External_Advantages)) /
+            (tf.math.reduce_std(External_Advantages) + 1e-6))
+
+        logprobs = self.distributions.logprob(action_probs, actions)
+        Old_logprobs = tf.stop_gradient(
+            self.distributions.logprob(old_action_probs, actions))
+        ratios = tf.math.exp(logprobs - Old_logprobs)
+
+        # cal PPO-clip, 0.2 is hyper-parameter
+        pg_loss = tf.minimum(
+            ratios * External_Advantages,
+            tf.clip_by_value(ratios, 1 - 0.2, 1 + 0.2) * External_Advantages)
+        # add duel-clip
+        duel_clip_loss = tf.where(tf.math.less(External_Advantages, 0),
+                                  tf.maximum(pg_loss, 3 * External_Advantages),
+                                  pg_loss)
+        pg_loss = tf.math.reduce_mean(duel_clip_loss)
+        # 从prob中获得entropy
+        dist_entropy = tf.math.reduce_mean(
+            self.distributions.entropy(action_probs))
+
+        # 对预测的外部value进行一个裁剪
+        ex_vpredclipped = Old_ex_values + tf.clip_by_value(
+            ex_values - Old_ex_values, -self.value_clip, self.value_clip)
+        # 分别计算clip后于clip前预测的外部value与外部return的差
+        ex_vf_losses1 = tf.math.square(External_Returns -
+                                       ex_values)  # Mean Squared Error
+        ex_vf_losses2 = tf.math.square(External_Returns -
+                                       ex_vpredclipped)  # Mean Squared Error
+        # 把这个差当作loss
+        critic_ext_loss = tf.math.reduce_mean(
+            tf.math.maximum(ex_vf_losses1, ex_vf_losses2))
+
+        # 对于PG loss，它实际上是目标函数 我们要最大化它 也就是最小化它的负数
+        # 对于critic loss 我们要最小化它
+        # 对于熵 熵越大概率分布越均匀 所以我们要最大化熵 也就是最小化它的负数
+        loss = (critic_ext_loss * self.vf_loss_coef) - (
+            dist_entropy * self.entropy_coef) - pg_loss
+        return loss, critic_ext_loss, dist_entropy, pg_loss
+
     # @tf.function
     def act(self, state):
         state = tf.expand_dims(tf.cast(state, dtype=tf.float32), 0)
         action_probs = self.actor(state)
         critic = self.ex_critic(state)
-        wandb.log({'max_p': tf.math.reduce_max(action_probs).numpy()}, commit=False)
-        wandb.log({'min_p': tf.math.reduce_min(action_probs).numpy()}, commit=False)
-        wandb.log({'value': critic.numpy()})
+        # wandb.log({'max_p': tf.math.reduce_max(action_probs).numpy()},
+        #           commit=False)
+        # wandb.log({'min_p': tf.math.reduce_min(action_probs).numpy()},
+        #           commit=False)
+        # wandb.log({'value': critic.numpy()})
         if self.is_training_mode:
             action = self.distributions.sample(action_probs)
         else:
@@ -522,8 +585,8 @@ class Agent():
 
     # 进行一个反向传播
     # @tf.function
-    def training_ppo(self, states, actions, rewards, dones, next_states,
-                     mean_obs, std_obs, std_in_rewards):
+    def training_ppo_rnd(self, states, actions, rewards, dones, next_states,
+                         mean_obs, std_obs, std_in_rewards):
         obs = tf.stop_gradient(
             self.utils.normalize(next_states, mean_obs, std_obs))
         state_preds = self.rnd_predict(obs)
@@ -537,14 +600,14 @@ class Agent():
             next_ex_values, next_in_values = self.ex_critic(
                 next_states), self.in_critic(next_states)
 
-            loss, critic_loss, dist_entropy, pg_loss = self.get_PPO_loss(action_probs, ex_values, old_action_probs,
-                                     old_ex_values, next_ex_values, actions,
-                                     rewards, dones, state_preds,
-                                     state_targets, in_values, old_in_values,
-                                     next_in_values, std_in_rewards)
-        wandb.log({"critic_loss": critic_loss.numpy()}, commit=False)
-        wandb.log({"entropy": dist_entropy.numpy()}, commit=False)
-        wandb.log({"pg_loss": pg_loss.numpy()}, commit=False)
+            loss, critic_loss, dist_entropy, pg_loss = self.get_PPO_loss(
+                action_probs, ex_values, old_action_probs, old_ex_values,
+                next_ex_values, actions, rewards, dones, state_preds,
+                state_targets, in_values, old_in_values, next_in_values,
+                std_in_rewards)
+        # wandb.log({"critic_loss": critic_loss.numpy()}, commit=False)
+        # wandb.log({"entropy": dist_entropy.numpy()}, commit=False)
+        # wandb.log({"pg_loss": pg_loss.numpy()}, commit=False)
         gradients = tape.gradient(
             loss, self.actor.trainable_variables +
             self.ex_critic.trainable_variables +
@@ -554,6 +617,25 @@ class Agent():
                 gradients, self.actor.trainable_variables +
                 self.ex_critic.trainable_variables +
                 self.in_critic.trainable_variables))
+
+    def training_ppo(self, states, actions, rewards, dones, next_states):
+        with tf.GradientTape() as tape:
+            action_probs, values = self.actor(states), self.ex_critic(states)
+            old_action_probs, old_values = self.actor_old(
+                states), self.ex_critic_old(states)
+            next_values = self.ex_critic(next_states)
+
+            loss, critic_loss, dist_entropy, pg_loss = self.get_loss(action_probs, values, old_action_probs,
+                                 old_values, next_values, actions, rewards,
+                                 dones)
+
+        gradients = tape.gradient(
+            loss,
+            self.actor.trainable_variables + self.ex_critic.trainable_variables)
+        self.ppo_optimizer.apply_gradients(
+            zip(
+                gradients, self.actor.trainable_variables +
+                self.ex_critic.trainable_variables))
 
     # 更新rnd模型
     def update_rnd(self):
@@ -584,10 +666,13 @@ class Agent():
         for _ in range(self.PPO_epochs):
             for states, actions, rewards, dones, next_states in self.memory.get_all_tensor(
             ).batch(batch_size):
-                self.training_ppo(states, actions, rewards, dones, next_states,
-                                  self.obs_memory.mean_obs,
-                                  self.obs_memory.std_obs,
-                                  self.obs_memory.std_in_rewards)
+                if args.rnd:
+                    self.training_ppo_rnd(states, actions, rewards, dones, next_states,
+                                    self.obs_memory.mean_obs,
+                                    self.obs_memory.std_obs,
+                                    self.obs_memory.std_in_rewards)
+                else:
+                    self.training_ppo(states, actions, rewards, dones, next_states)
 
         # 清除缓存数据
         self.memory.clear_memory()
@@ -595,7 +680,8 @@ class Agent():
         # 更新旧的模型
         self.actor_old.set_weights(self.actor.get_weights())
         self.ex_critic_old.set_weights(self.ex_critic.get_weights())
-        self.in_critic_old.set_weights(self.in_critic.get_weights())
+        if args.rnd:
+            self.in_critic_old.set_weights(self.in_critic.get_weights())
 
     def save_weights(self):
         self.actor.save_weights('{args.game}/actor_ppo', save_format='tf')
@@ -606,11 +692,11 @@ class Agent():
                                     save_format='tf')
         self.ex_critic_old.save_weights('{args.game}/ex_critic_old_ppo',
                                         save_format='tf')
-
-        self.in_critic.save_weights('{args.game}/in_critic_ppo',
-                                    save_format='tf')
-        self.in_critic_old.save_weights('{args.game}/in_critic_old_ppo',
+        if args.rnd:
+            self.in_critic.save_weights('{args.game}/in_critic_ppo',
                                         save_format='tf')
+            self.in_critic_old.save_weights('{args.game}/in_critic_old_ppo',
+                                            save_format='tf')
 
     def load_weights(self):
         self.actor.load_weights('{args.game}/actor_ppo')
@@ -618,15 +704,14 @@ class Agent():
 
         self.ex_critic.load_weights('{args.game}/ex_critic_ppo')
         self.ex_critic_old.load_weights('{args.game}/ex_critic_old_ppo')
-
-        self.in_critic.load_weights('{args.game}/in_critic_ppo')
-        self.in_critic_old.load_weights('{args.game}/in_critic_old_ppo')
+        if args.rnd:
+            self.in_critic.load_weights('{args.game}/in_critic_ppo')
+            self.in_critic_old.load_weights('{args.game}/in_critic_old_ppo')
 
 
 def run_inits_episode(env, agent, state_dim, render, n_init_episode):
-    ############################################
     env.reset()
-
+    print("INIT EPISODES!")
     for _ in range(n_init_episode):
         action = env.action_space.sample()
         next_state, _, done, _ = env.step(action)
@@ -651,6 +736,7 @@ def make_env(gym_id):
         env = RGBImgPartialObsWrapper(env)
         env = GrayImgObsWrapper(env)
         env = FrameStackWrapper(env, num_stack=8)
+        env = NormalizeObsWrapper(env)
         env = MaxStepWrapper(env, 100)
         return env
     else:
@@ -700,9 +786,10 @@ def run_episode(env, agent, state_dim, render, training_mode, t_updates,
             env.render()
 
         if training_mode:
-            if t_updates % n_update == 0:
-                agent.update_rnd()
-                t_updates = 0
+            if args.rnd:
+                if t_updates % n_update == 0:
+                    agent.update_rnd()
+                    t_updates = 0
 
         if done:
             action_var = np.var(action_list)
@@ -720,7 +807,7 @@ def main():
     n_step_update = 128  # steps before you update the RND
     n_eps_update = 5  # episode before you update the PPO
     n_episode = 10000  # episode you want to run
-    n_init_episode = 256
+    n_init_episode = 10
     n_saved = 10  # episode to run before saving the weights
 
     value_clip = 1.0  # Value clipping
@@ -736,28 +823,30 @@ def main():
     env = make_env(env_name)
 
     state_dim = list(env.observation_space.shape)
-    action_dim = args.action_dim
+    if 'MiniGrid' in args.game:
+        action_dim = args.action_dim
+    else:
+        action_dim = env.action_space.n
     ##############################################
-    runs = wandb.init(
-        project=args.game.split('/')[-1] + '_PPO_' +
-        str(n_episode) if '/' in args.game else args.game + '_PPO_' +
-        str(n_episode),
-        name=args.model + '_PPO',
-        config={
-            'learning_rate': learning_rate,
-            'num_actions': action_dim,
-            'gamma': gamma,
-            'total_episodes': n_episode,
-            'Num_stacking': 8,
-            'num_batches': 1,
-            'epoches': 4
-        },
-        save_code=True,
-        monitor_gym=True)
+    runs = wandb.init(project=args.game.split('/')[-1] + '_PPO_' +
+                      str(n_episode) if '/' in args.game else args.game +
+                      '_PPO_' + str(n_episode),
+                      name=args.model + '_PPO',
+                      config={
+                          'learning_rate': learning_rate,
+                          'num_actions': action_dim,
+                          'gamma': gamma,
+                          'total_episodes': n_episode,
+                          'Num_stacking': 8,
+                          'num_batches': 1,
+                          'epoches': 4
+                      },
+                      save_code=True,
+                      monitor_gym=True)
     config = wandb.config
-    agent = Agent(state_dim, action_dim, training_mode,
-                  value_clip, entropy_coef, vf_loss_coef,
-                  minibatch, PPO_epochs, gamma, lam, learning_rate, n_episode)
+    agent = Agent(state_dim, action_dim, training_mode, value_clip,
+                  entropy_coef, vf_loss_coef, minibatch, PPO_epochs, gamma,
+                  lam, learning_rate, n_episode)
     #############################################
 
     if load_weights:
@@ -766,18 +855,14 @@ def main():
 
     t_updates = 0
 
-    #############################################
-
     if training_mode:
         agent = run_inits_episode(env, agent, state_dim, render,
                                   n_init_episode)
 
-    #############################################
-
     for i_episode in range(1, n_episode + 1):
-        total_reward, time, t_updates, action_var = run_episode(env, agent, state_dim,
-                                                    render, training_mode,
-                                                    t_updates, n_step_update)
+        total_reward, time, t_updates, action_var = run_episode(
+            env, agent, state_dim, render, training_mode, t_updates,
+            n_step_update)
         print('Episode {} \t t_reward: {} \t time: {} \t '.format(
             i_episode, total_reward, time))
 
@@ -789,8 +874,8 @@ def main():
                 agent.save_weights()
                 print('weights saved')
 
-        wandb.log({"rewards": int(total_reward)}, commit=False)
-        wandb.log({"action_var": action_var}, commit=False)
+        # wandb.log({"rewards": int(total_reward)}, commit=False)
+        # wandb.log({"action_var": action_var}, commit=False)
 
 
 if __name__ == '__main__':

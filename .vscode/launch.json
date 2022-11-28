@@ -14,7 +14,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--model", "ViTransasdqwdqw",
+                "--model", "ViTrans",
                 "--game", "ALE/Breakout-v5"
             ]
         }

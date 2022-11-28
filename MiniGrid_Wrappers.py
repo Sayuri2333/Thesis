@@ -5,6 +5,8 @@ from gymnasium import spaces
 from collections import deque
 import numpy as np
 
+from Atari_Warppers import RunningMeanStd
+
 
 class GrayImgObsWrapper(ObservationWrapper):
     """
@@ -66,3 +68,25 @@ class MaxStepWrapper(gym.Wrapper):
     def reset(self, **kwargs):
         self.count = 0
         return self.env.reset(**kwargs)
+
+
+class NormalizeObsWrapper(gym.Wrapper):
+    def __init__(self, env, epsilon: float = 1e-8):
+        super().__init__(env)
+        self.obs_rms = RunningMeanStd(shape=self.observation_space.shape)
+        self.epsilon = epsilon
+    
+    def normalize(self, obs):
+        self.obs_rms.update(obs)
+        return (obs - self.obs_rms.mean) / np.sqrt(self.obs_rms.var + self.epsilon)
+
+
+    def step(self, action):
+        obs, rews, dones, infos = self.env.step(action)
+        obs = self.normalize(np.array([obs]))[0]
+        return obs, rews, dones, infos
+
+    def reset(self, **kwargs):
+        obs = self.env.reset(**kwargs)
+        obs = self.normalize(np.array([obs]))[0]
+        return obs
