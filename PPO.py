@@ -99,7 +99,7 @@ parser = argparse.ArgumentParser(description='Training parameters')
 #
 parser.add_argument('--steps',
                     type=int,
-                    default=1000000,
+                    default=500000,
                     help="length of Replay Memory")
 parser.add_argument('--epochs',
                     type=int,
