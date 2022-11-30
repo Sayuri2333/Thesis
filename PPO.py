@@ -128,7 +128,7 @@ args = parser.parse_args()
 def make_env(gym_id):
     if "MiniGrid" in gym_id:
         env = gymnasium.make(gym_id)
-        # env = StateBonus(env)
+        env = StateBonus(env)
         if "DQN" in args.model:
             env = RGBImgPartialObsWrapper(env)
         else:
@@ -159,9 +159,11 @@ game = make_env(args.game)
 def make_test_env(gym_id):
     if "MiniGrid" in gym_id:
         env = gymnasium.make(gym_id)
-        env = StateBonus(env)
-        # env = RGBImgPartialObsWrapper(env)
-        env = RGBImgObsWrapper(env)
+        # env = StateBonus(env)
+        if "DQN" in args.model:
+            env = RGBImgPartialObsWrapper(env)
+        else:
+            env = RGBImgObsWrapper(env)
         env = GrayImgObsWrapper(env)
         env = FrameStackWrapper(env, num_stack=8)
         env = NormalizeObsWrapper(env)
