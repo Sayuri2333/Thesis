@@ -735,7 +735,8 @@ def make_env(gym_id):
     if "MiniGrid" in gym_id:
         env = gymnasium.make(gym_id)
         env = StateBonus(env)
-        env = RGBImgPartialObsWrapper(env)
+        # env = RGBImgPartialObsWrapper(env)
+        env = RGBImgObsWrapper(env)
         env = GrayImgObsWrapper(env)
         env = FrameStackWrapper(env, num_stack=8)
         env = NormalizeObsWrapper(env)
@@ -815,7 +816,7 @@ def main():
     value_clip = 1.0  # Value clipping
     entropy_coef = 0.1  # entropy loss ratio
     vf_loss_coef = 1.0  # critic loss ratio
-    minibatch = 128  # size of batch = n_update / minibatch
+    minibatch = 64  # size of batch = n_update / minibatch
     PPO_epochs = 4  # epochs for an update
 
     gamma = 0.99

@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import gym
+import gymnasium
 from yaml import parse
 import tensorflow.compat.v1 as tf
 
@@ -17,6 +18,8 @@ from model_ppo import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFC
 import argparse
 from utils import RewardScaling
 from Atari_Warppers import NoopResetEnv, NormalizedEnv, ResizeObservation, SyncVectorEnv, ClipRewardEnv, EpisodicLifeEnv, FireResetEnv
+from minigrid.wrappers import RGBImgPartialObsWrapper, RGBImgObsWrapper
+from MiniGrid_Wrappers import StateBonus, GrayImgObsWrapper, FrameStackWrapper, MaxStepWrapper, NormalizeObsWrapper
 
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
@@ -96,7 +99,7 @@ parser = argparse.ArgumentParser(description='Training parameters')
 #
 parser.add_argument('--steps',
                     type=int,
-                    default=500000,
+                    default=1000000,
                     help="length of Replay Memory")
 parser.add_argument('--epochs',
                     type=int,
@@ -116,37 +119,29 @@ parser.add_argument('--batch_size',
                     help='batch size in training')
 parser.add_argument('--memory_size', type=int, default=1024)
 parser.add_argument('--clip_coef', type=float, default=0.1)
-parser.add_argument('--num_envs', type=int, default=1)
+parser.add_argument('--action_dim', type=int, default=3)
 parser.set_defaults(render=False)
 
 args = parser.parse_args()
 
-# game = gym.make(args.game)
-# game = gym.wrappers.RecordVideo(game, 'video', episode_trigger = lambda x: x % 100 == 0)
-# game = NoopResetEnv(game, noop_max=30) # delete when test
-# # game = MaxAndSkipEnv(game, skip=4)
-# game = EpisodicLifeEnv(game) # delete when test
-# if "FIRE" in game.unwrapped.get_action_meanings():
-#     game = FireResetEnv(game)
-# game = ClipRewardEnv(game) # delete when test
-# game = ResizeObservation(game, (80, 80))
-# game = gym.wrappers.GrayScaleObservation(game, keep_dim=True)
-# game = NormalizedEnv(game, ob=True, ret=False)
-# game = gym.wrappers.FrameStack(game, 8)
-# game = gym.wrappers.FrameStack(game, num_stack=8)
 
-
-def make_env(gym_id, idx, run_name):
-    def thunk():
+def make_env(gym_id):
+    if "MiniGrid" in gym_id:
+        env = gymnasium.make(gym_id)
+        # env = StateBonus(env)
+        if "DQN" in args.model:
+            env = RGBImgPartialObsWrapper(env)
+        else:
+            env = RGBImgObsWrapper(env)
+        env = GrayImgObsWrapper(env)
+        env = FrameStackWrapper(env, num_stack=8)
+        env = NormalizeObsWrapper(env)
+        env = MaxStepWrapper(env, 100)
+        return env
+    else:
         env = gym.make(gym_id)
         env = gym.wrappers.RecordEpisodeStatistics(env)
-        if idx == 0:
-            env = gym.wrappers.RecordVideo(
-                env,
-                f"videos/{run_name}",
-                episode_trigger=lambda x: x % 100 == 0)
         env = NoopResetEnv(env, noop_max=30)
-        # env = MaxAndSkipEnv(env, skip=4)
         env = EpisodicLifeEnv(env)
         if "FIRE" in env.unwrapped.get_action_meanings():
             env = FireResetEnv(env)
@@ -157,31 +152,23 @@ def make_env(gym_id, idx, run_name):
         env = gym.wrappers.FrameStack(env, 8)
         return env
 
-    return thunk
+
+game = make_env(args.game)
 
 
-game = SyncVectorEnv([
-    make_env(args.game, i,
-             args.game.split('/')[-1]) for i in range(args.num_envs)
-])
-
-# test game
-# test_game = gym.make(args.game)
-# test_game = gym.wrappers.RecordVideo(test_game, 'video', episode_trigger = lambda x: x % 10 == 0)
-# # test_game = MaxAndSkipEnv(test_game, skip=4)
-# if "FIRE" in test_game.unwrapped.get_action_meanings():
-#     test_game = FireResetEnv(test_game)
-# test_game = ResizeObservation(test_game, (80, 80))
-# test_game = gym.wrappers.GrayScaleObservation(test_game, keep_dim=True)
-# test_game = NormalizedEnv(test_game, ob=True, ret=False)
-
-
-def make_test_env(gym_id, run_name):
-    def thunk():
+def make_test_env(gym_id):
+    if "MiniGrid" in gym_id:
+        env = gymnasium.make(gym_id)
+        env = StateBonus(env)
+        # env = RGBImgPartialObsWrapper(env)
+        env = RGBImgObsWrapper(env)
+        env = GrayImgObsWrapper(env)
+        env = FrameStackWrapper(env, num_stack=8)
+        env = NormalizeObsWrapper(env)
+        env = MaxStepWrapper(env, 100)
+        return env
+    else:
         env = gym.make(gym_id)
-        env = gym.wrappers.RecordVideo(env,
-                                       f"videos/{run_name}",
-                                       episode_trigger=lambda x: x % 100 == 0)
         if "FIRE" in env.unwrapped.get_action_meanings():
             env = FireResetEnv(env)
         env = ResizeObservation(env, (80, 80))
@@ -190,32 +177,33 @@ def make_test_env(gym_id, run_name):
         env = gym.wrappers.FrameStack(env, 8)
         return env
 
-    return thunk
 
-
-test_game = SyncVectorEnv([
-    make_test_env(args.game,
-                  args.game.split('/')[-1]) for i in range(args.num_envs)
-])
+test_game = make_test_env(args.game)
 
 # Initialize runningmean and std for train and test game
 test_game.reset()
-for i in range(100):
+for i in range(50):
     done = False
     step = 0
     while not done:
         step += 1
-        random_action = test_game.action_space.sample()
+        if 'MiniGrid' not in args.game:
+            random_action = test_game.action_space.sample()
+        else:
+            random_action = np.random.randint(args.action_dim)
         pic, reward, done, _ = test_game.step(random_action)
     test_game.reset()
 
 game.reset()
-for i in range(100):
+for i in range(50):
     done = False
     step = 0
     while not done:
         step += 1
-        random_action = game.action_space.sample()
+        if 'MiniGrid' not in args.game:
+            random_action = test_game.action_space.sample()
+        else:
+            random_action = np.random.randint(args.action_dim)
         pic, reward, done, _ = game.step(random_action)
     game.reset()
 
@@ -232,8 +220,10 @@ BUFFER_SIZE = args.memory_size
 GAMMA = 0.99
 
 BATCH_SIZE = args.batch_size
-NUM_ACTIONS = game.single_action_space.n
-STEPS_PER_EPOCH = 5
+if 'MiniGrid' not in args.game:
+    NUM_ACTIONS = game.action_space.n
+else:
+    NUM_ACTIONS = args.action_dim
 ENTROPY_LOSS = 0.01
 LR = 0.00025  # Lower lr stabilises training greatly
 
@@ -300,8 +290,9 @@ class Agent:
         self.recorder_maxp = []
         self.recorder_minaction = []
         self.step = 0
+        self.old_step = 0
         self.backbone = eval(args.model)()
-        self.Num_stacking = config.Num_stacking
+        self.Num_stacking = 8
         self.actor, self.critic = self.build_actor_critic()
         # self.batch = [[], [], [], []]
         self.batch = [[], [], [], [], []]
@@ -311,6 +302,7 @@ class Agent:
         self.reward_over_time = []
         self.path = self.get_path()
         self.obs = self.env.reset()
+        self.obs = np.expand_dims(self.obs, axis=0)
         # self.initialization(self.env.reset())
 
         self.reward_scal = RewardScaling()
@@ -320,16 +312,6 @@ class Agent:
             args.steps) + '/' + args.model + '/'
         return name
 
-    # stack state into a state_set
-    # def initialization(self, state):  # 接收初始状态并初始化state_set
-    #     self.state_set = []
-    #     for i in range(self.Num_stacking):
-    #         self.state_set.append(state.copy())
-
-    # def skip_and_stack_frame(self, state):  # 将给定state存入state_set并返回最近8 frames
-    #     self.state_set.append(state.copy())
-    #     if len(self.state_set) > self.Num_stacking:
-    #         del self.state_set[:-self.Num_stacking]
 
     def build_actor_critic(self):
         backbone = eval(args.model)()
@@ -386,6 +368,7 @@ class Agent:
     def reset_env(self):
         self.episode += 1
         self.obs = self.env.reset()
+        self.obs = np.expand_dims(self.obs, axis=0)
         self.reward = []
 
     def get_action(self):
@@ -398,7 +381,7 @@ class Agent:
         action_matrix = np.zeros(NUM_ACTIONS)
         # 根据选择的动作生成one-hot动作向量
         action_matrix[action] = 1
-        return action, action_matrix, p
+        return action, action_matrix, p[0]
 
     def transform_reward(self, obses, dones):
         # self.reward存储当前episode每一步的reward
@@ -437,13 +420,14 @@ class Agent:
         done = False
         # tmp_batch = [[], [], []]
         tmp_batch = [[], [], [], []]
-        step = 0
+        rewards = 0
         # while not done:
         while len(tmp_batch[0]) < 1024:
             action, action_matrix, predicted_action = self.get_action()
-            observation, reward, done, info = self.env.step([action])
+            observation, reward, done, info = self.env.step(action)
             self.step += 1
             self.reward.append(reward)
+            rewards += reward
             # 存储当前状态，当前执行动作one-hot向量以及当前actor网络对于状态输出的动作概率向量
             tmp_batch[0].append(self.obs)
             tmp_batch[1].append(action_matrix)
@@ -457,16 +441,29 @@ class Agent:
             # 更新当前state到下一步
             # self.skip_and_stack_frame(observation)
             self.obs = observation
-            for item in info:
-                if "episode" in item.keys():
+            self.obs = np.expand_dims(observation, axis=0)
+            if 'MiniGrid' not in args.game:
+                if "episode" in info.keys():
                     print(
-                        f"global_step={self.step}, episodic_return={item['episode']['r']}"
+                        f"global_step={self.step}, episodic_return={info['episode']['r']}"
                     )
-                    wandb.log({"episodic_return": item["episode"]["r"]},
-                              step=self.step)
-                    wandb.log({"episodic_length": item["episode"]["l"]},
-                              step=self.step)
-                    break
+                    wandb.log({"episodic_return": info["episode"]["r"]},
+                            step=self.step)
+                    wandb.log({"episodic_length": info["episode"]["l"]},
+                            step=self.step)
+                    self.obs = self.env.reset()
+                    self.obs = np.expand_dims(self.obs, axis=0)
+            else:
+                if done:
+                    print(f"global_step={self.step}, episodic_return={rewards}")
+                    wandb.log({"episodic_return": rewards},
+                            step=self.step)
+                    wandb.log({"episodic_length": self.step-self.old_step},
+                            step=self.step)
+                    self.old_step = self.step
+                    rewards = 0
+                    self.obs = self.env.reset()
+                    self.obs = np.expand_dims(self.obs, axis=0)
 
         # if done:
         print('Current steps: ' + str(self.step))
@@ -483,7 +480,6 @@ class Agent:
             self.batch[4].append(done)
         del tmp_batch
         self.reward = []
-        self.episode += 1
         # self.reset_env()
         # cut old
         if len(self.batch[0]) > BUFFER_SIZE:
@@ -494,7 +490,7 @@ class Agent:
         obs, action, pred, reward = np.array(self.batch[0]), np.array(
             self.batch[1]), np.array(self.batch[2]), np.reshape(
                 np.array(self.batch[3]), (len(self.batch[3]), 1))
-        pred = np.reshape(pred, (pred.shape[0], pred.shape[2]))
+        # pred = np.reshape(pred, (pred.shape[0], pred.shape[2]))
         return obs, action, pred, reward
 
     def run(self):
