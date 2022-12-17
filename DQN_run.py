@@ -282,10 +282,10 @@ class DARQN:
         return sess
 
     def initialization(self, state):  # 接收初始状态并初始化state_set
-        state = (state - 0) / 255.0
+        state1 = (state - 0) / 255.0
         self.state_set = []
         for i in range(self.Num_stacking):
-            self.state_set.append(state.copy())
+            self.state_set.append(state1.copy())
 
         return state  # 返回初始状态啥都不做之后的状态
     
