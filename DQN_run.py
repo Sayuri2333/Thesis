@@ -136,7 +136,7 @@ class DARQN:
                              'first_epsilon': 0.9,
                              'final_epsilon': 0.1,
                              'Num_stacking': 8,
-                             'batch_size': 32,
+                             'batch_size': 128,
                              'replay_memory': args.memory
                          },
                          save_code=True
@@ -216,9 +216,10 @@ class DARQN:
                 # 到了更新target network的时候
                 if self.episode % self.Num_update_target == 0:
                     self.sess.run(self.update_target_network)
-
+                
+                if self.step % 5 == 0:
                 # 训练一手
-                self.train(self.model, self.target_model)
+                    self.train(self.model, self.target_model)
                 # 保存模型
                 self.save_model()  # 虽然每一步都在调用 但实际上只有在刚好训练完成时才保存模型
 
