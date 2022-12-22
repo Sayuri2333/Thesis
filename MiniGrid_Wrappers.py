@@ -31,15 +31,18 @@ class FrameStackWrapper(gym.Wrapper):
     def __init__(self, env, num_stack):
         super().__init__(env)
         self.num_stack = num_stack
-        self.frames= deque(maxlen=self.num_stack)
+        self.frames = deque(maxlen=self.num_stack if self.num_stack > 0 else 1)
         new_spaces = spaces.Box(
             low=0, high=255, shape=(self.num_stack,80, 80, 1), dtype="uint8"
         )
         self.observation_space = new_spaces
 
     def observation(self):
-        assert len(self.frames) == self.num_stack
-        return np.array(list(self.frames))
+        if self.num_stack > 0:
+            assert len(self.frames) == self.num_stack
+            return np.array(list(self.frames))
+        elif self.num_stack == 0:
+            return self.frames[0]
     
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
@@ -48,7 +51,10 @@ class FrameStackWrapper(gym.Wrapper):
 
     def reset(self, **kwargs):
         observation,_ = self.env.reset(**kwargs)
-        [self.frames.append(observation) for _ in range(self.num_stack)]
+        if self.num_stack > 0:
+            [self.frames.append(observation) for _ in range(self.num_stack)]
+        else:
+            self.frames.append(observation)
         return self.observation()
 
 

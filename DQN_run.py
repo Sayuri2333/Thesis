@@ -17,6 +17,9 @@ from model import DQN, DRQN, Conv_Transformer, ConvTransformer, ViTrans, MFCA, M
 from utils import SinusoidalPositionEmbedding, TransformerBlock, VisionTransformerBlock, CreatePatches, Add_Embedding_Layer, TemporalEmbedding, ConvTransformerBlock, multiFocusConvAttention, MultiscaleTransformerBlock, DownSampleTransformerBlock, SpatialEmbedding, SpaceTimeLocalTransformerBlock
 from utils import NoisyDense
 import gym
+import gymnasium
+from minigrid.wrappers import RGBImgPartialObsWrapper, RGBImgObsWrapper
+from MiniGrid_Wrappers import StateBonus, GrayImgObsWrapper, FrameStackWrapper, MaxStepWrapper, NormalizeObsWrapper
 import os
 from PER import Memory
 
@@ -87,8 +90,8 @@ parser  = argparse.ArgumentParser(description='Training parameters')
 parser.add_argument('--memory', type=int, default=20000, help="length of Replay Memory")
 parser.add_argument('--training_steps', type=int, default=500000, help="training steps")
 parser.add_argument('--with_PER', action='store_true', help="Use Prioritized Experience Replay")
-parser.add_argument('--game', type=str, help="Games in Atari")
-parser.add_argument('--model', type=str, help="Model we use")
+parser.add_argument('--game', default='MiniGrid-MemoryS11-v0', type=str, help="Games in Atari")
+parser.add_argument('--model', default='DQN', type=str, help="Model we use")
 parser.add_argument('--multi_gpu', action='store_true', help='If use multi GPU')
 parser.add_argument('--dueling', action='store_true', help='If use dueling architecture')
 parser.add_argument('--noisy', action='store_true', help='If use noisy network')
@@ -105,15 +108,27 @@ def resize_input(pic):
         pic = pic[10:190, :, :]
     elif args.game == 'BeamRiderDeterministic-v4':
         pic = pic[10:190, :, :]
-    elif args.name == 'GopherDeterministic-v4':
+    elif args.game == 'GopherDeterministic-v4':
         pic = pic[45:225, :, :]
     # RGB to Grey
-    pic = cv2.resize(pic, (80, 80))
-    pic = pic[:, :, 0:1] * 0.2989 + pic[:, :, 1:2] * 0.5870 + pic[:, :, 2:3] * 0.1140
+    if 'MiniGrid' not in args.game:
+        pic = cv2.resize(pic, (80, 80))
+        pic = pic[:, :, 0:1] * 0.2989 + pic[:, :, 1:2] * 0.5870 + pic[:, :, 2:3] * 0.1140
     return pic
 
-
-game = gym.make(args.game)
+if 'MiniGrid' not in args.game:
+    game = gym.make(args.game)
+else:
+    env = gymnasium.make(args.game)
+    # env = StateBonus(env)
+    if "DQN" in args.model:
+        env = RGBImgPartialObsWrapper(env)
+    else:
+        env = RGBImgObsWrapper(env)
+    env = GrayImgObsWrapper(env)
+    env = FrameStackWrapper(env, num_stack=0)
+    # env = NormalizeObsWrapper(env)
+    game = MaxStepWrapper(env, 100)
 
 if args.multi_gpu:
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
@@ -128,7 +143,7 @@ class DARQN:
                          config = {
                              'learning_rate': 0.00025,
                              'loss_function': 'mse',
-                             'num_actions': game.action_space.n,
+                             'num_actions': game.action_space.n if 'MiniGrid' not in args.game else 3,
                              'Num_Exploration': 5000,
                              'Num_Training': args.training_steps,
                              'Num_Testing': 100000,
