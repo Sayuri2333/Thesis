@@ -107,7 +107,7 @@ parser.add_argument('--epochs',
                     help="epochs on training batch data")
 parser.add_argument('--game',
                     type=str,
-                    default='ALE/Breakout-v5',
+                    default='MiniGrid-MemoryS11-v0',
                     help="Games in Atari")
 parser.add_argument('--model', type=str, default='DQN', help="Model we use")
 parser.add_argument('--multi_gpu',
@@ -428,7 +428,10 @@ class Agent:
             action, action_matrix, predicted_action = self.get_action()
             observation, reward, done, info = self.env.step(action)
             self.step += 1
-            self.reward.append(reward)
+            if 'MiniGrid' not in args.game:
+                self.reward.append(reward)
+            else:
+                self.reward.append(reward + info['r'])
             rewards += reward
             # 存储当前状态，当前执行动作one-hot向量以及当前actor网络对于状态输出的动作概率向量
             tmp_batch[0].append(self.obs)

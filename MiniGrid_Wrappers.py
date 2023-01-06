@@ -126,7 +126,8 @@ class StateBonus(Wrapper):
         self.counts[tup] = new_count
 
         bonus = 0.1 / math.sqrt(new_count)
-        reward += bonus
+        # reward += bonus
+        info['r'] = bonus
 
         return obs, reward, terminated, truncated, info
 
