@@ -120,14 +120,9 @@ if 'MiniGrid' not in args.game:
     game = gym.make(args.game)
 else:
     env = gymnasium.make(args.game)
-    # env = StateBonus(env)
-    if "DQN" in args.model:
-        env = RGBImgPartialObsWrapper(env)
-    else:
-        env = RGBImgObsWrapper(env)
+    env = RGBImgPartialObsWrapper(env)
     env = GrayImgObsWrapper(env)
     env = FrameStackWrapper(env, num_stack=0)
-    # env = NormalizeObsWrapper(env)
     game = MaxStepWrapper(env, 100)
 
 if args.multi_gpu:

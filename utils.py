@@ -31,8 +31,7 @@ class SinusoidalPositionEmbedding(tf.keras.layers.Layer):
         self.custom_position_ids = custom_position_ids
 
     def call(self, inputs):
-        """如果custom_position_ids，那么第二个输入为自定义的位置id
-        """
+        """如果custom_position_ids，那么第二个输入为自定义的位置id"""
         if self.custom_position_ids:
             seq_len = K.shape(inputs)[1]
             inputs, position_ids = inputs
